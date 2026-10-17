@@ -55,7 +55,9 @@ npm run tauri dev
 
 API 使用 [VT v3 文件报告接口](https://docs.virustotal.com/reference/file-info)。对所选文件优先使用 SHA-256，其次 SHA-1、MD5；显示恶意检出数 / 引擎统计总数、可疑数和报告日期。未收录、暂无统计、无效 Key、网络失败和额度不足会分别提示。0 检出不代表文件安全，旧报告也不能替代最新检测。本项目不提供文件上传或重新扫描。
 
-Key 仅保存在 Rust 后端的本次应用会话内，保存后输入框清空，可点击“清除 Key”；重启后需重新输入。不会写入配置文件、localStorage、导出清单或日志。只有主题偏好保存在本机。
+Key 通过 Rust 后端保存到当前系统用户的 **Windows 凭据管理器 / macOS 钥匙串**，下次启动自动加载，无需重新填写。保存后输入框清空，仅显示“Key 已保存”；点击“清除 Key”会同时删除系统中保存的凭据，下次启动也不再加载。应用不会将 Key 写入明文配置文件、localStorage、导出清单或日志，也不会把已保存的 Key 回传到界面。系统凭据存储读取/写入失败会明确提示；解锁后可点击“重新加载”。普通本地哈希计算仍可使用。
+
+凭据标识：service 为 `io.virushelper.desktop`，account 为 `virustotal-api-key`。旧会话版本的 Key 没有持久化，需要在此版本中保存一次。底层使用 [keyring 的系统凭据后端](https://docs.rs/keyring/3.6.3/keyring/)，没有单独的应用明文密钥文件。
 
 [VT 公共 API 官方限制](https://docs.virustotal.com/reference/public-vs-premium-api)为 **4 次/分钟、500 次/天**。应用采用 4 次/60 秒的本地滑动窗口，以及 10 分钟会话缓存；缓存命中不消耗请求额度。每日和账户其他客户端的共享额度由 VT 服务端控制。公共 API 禁止用于商业产品/服务，也限制未贡献新文件的业务工作流；请按实际用途确认适用的 VT 授权。
 
@@ -116,7 +118,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 ```text
 crates/hash-core/       算法、流式读取、目录批次、清单解析与安全导出
 crates/vt-client/       VT 会话 Key、限流、缓存、HTTP 与报告解析
-src-tauri/             原生对话框、任务状态与取消、Tauri IPC、安装包配置
+src-tauri/             系统凭据持久化、原生对话框、任务状态与取消、Tauri IPC、安装包配置
 src/                   React 界面、类型化桥接、状态与交互测试
 .github/workflows/     Windows/macOS 检查与构建
 docs/superpowers/      已确认的设计与实现计划

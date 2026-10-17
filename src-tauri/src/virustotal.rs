@@ -1,21 +1,41 @@
+use crate::credentials::VtState;
 use serde::Deserialize;
+use std::sync::Arc;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
-use vt_client::{validate_hash, VtClient, VtError, VtReport, VtSettings};
+use vt_client::{validate_hash, VtError, VtReport, VtSettings};
+use zeroize::Zeroizing;
 
-#[tauri::command]
-pub fn get_vt_settings(client: State<'_, VtClient>) -> Result<VtSettings, VtError> {
-    client.settings()
+async fn credential_task<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, VtError> + Send + 'static,
+) -> Result<T, VtError> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|_| VtError::new("credential-store", "系统凭据操作失败，请重试"))?
 }
 
 #[tauri::command]
-pub fn set_vt_api_key(client: State<'_, VtClient>, key: String) -> Result<VtSettings, VtError> {
-    client.set_api_key(key)
+pub async fn get_vt_settings(state: State<'_, Arc<VtState>>) -> Result<VtSettings, VtError> {
+    let state = state.inner().clone();
+    credential_task(move || state.settings()).await
 }
 
 #[tauri::command]
-pub async fn lookup_vt(client: State<'_, VtClient>, hash: String) -> Result<VtReport, VtError> {
-    client.lookup(&hash).await
+pub async fn set_vt_api_key(
+    state: State<'_, Arc<VtState>>,
+    key: String,
+) -> Result<VtSettings, VtError> {
+    let key = Zeroizing::new(key);
+    let state = state.inner().clone();
+    credential_task(move || state.set_api_key(key)).await
+}
+
+#[tauri::command]
+pub async fn lookup_vt(state: State<'_, Arc<VtState>>, hash: String) -> Result<VtReport, VtError> {
+    validate_hash(&hash)?;
+    let load_state = state.inner().clone();
+    credential_task(move || load_state.settings()).await?;
+    state.client.lookup(&hash).await
 }
 
 #[derive(Deserialize)]
@@ -56,17 +76,22 @@ mod tests {
     #[test]
     fn native_settings_never_return_key_and_lookup_rejects_unconfigured_sessions() {
         let app = mock_builder()
-            .manage(VtClient::new().unwrap())
+            .manage(crate::credentials::tests::memory_state())
             .build(mock_context(noop_assets()))
             .unwrap();
         let key = "a".repeat(64);
-        let settings = set_vt_api_key(app.state(), key.clone()).unwrap();
+        let settings =
+            tauri::async_runtime::block_on(set_vt_api_key(app.state(), key.clone())).unwrap();
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
             serde_json::json!({"configured": true})
         );
-        assert!(get_vt_settings(app.state()).unwrap().configured);
-        set_vt_api_key(app.state(), String::new()).unwrap();
+        assert!(
+            tauri::async_runtime::block_on(get_vt_settings(app.state()))
+                .unwrap()
+                .configured
+        );
+        tauri::async_runtime::block_on(set_vt_api_key(app.state(), String::new())).unwrap();
         let error =
             tauri::async_runtime::block_on(lookup_vt(app.state(), "b".repeat(64))).unwrap_err();
         let serialized = serde_json::to_value(error).unwrap();

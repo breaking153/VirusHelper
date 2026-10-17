@@ -1,4 +1,5 @@
 mod commands;
+mod credentials;
 mod dialogs;
 mod virustotal;
 
@@ -8,7 +9,9 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .manage(commands::AppState::default())
-        .manage(vt_client::VtClient::new().expect("无法初始化 VT 客户端"))
+        .manage(std::sync::Arc::new(
+            credentials::VtState::new().expect("无法初始化 VT 客户端"),
+        ))
         .invoke_handler(tauri::generate_handler![
             dialogs::pick_files,
             dialogs::pick_folder,

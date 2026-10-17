@@ -23,6 +23,8 @@ export function VirusTotal({
   openOptions: () => void;
 }) {
   const [configured, setConfigured] = useState(false);
+  const [loading, setLoading] = useState(native.available);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [key, setKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [querying, setQuerying] = useState(false);
@@ -34,6 +36,8 @@ export function VirusTotal({
   useEffect(() => {
     if (!native.available) return;
     let disposed = false;
+    setLoading(true);
+    setSettingsError(null);
     void native
       .vtSettings()
       .then((settings) => {
@@ -41,11 +45,14 @@ export function VirusTotal({
       })
       .catch((error) => {
         if (!disposed) setSettingsError(message(error));
+      })
+      .finally(() => {
+        if (!disposed) setLoading(false);
       });
     return () => {
       disposed = true;
     };
-  }, []);
+  }, [loadAttempt]);
 
   async function configure(value: string) {
     setSaving(true);
@@ -62,10 +69,10 @@ export function VirusTotal({
     }
   }
   async function query() {
-    if (!hash || querying) return;
+    if (!hash || querying || loading) return;
     if (!configured) {
       openOptions();
-      setSettingsError('请先设置 VT API Key');
+      setSettingsError((current) => current ?? '请先设置 VT API Key');
       return;
     }
     setQuerying(true);
@@ -96,7 +103,7 @@ export function VirusTotal({
           免费网页检验
         </button>
         <button
-          disabled={!hash || !native.available || querying || saving}
+          disabled={!hash || !native.available || querying || saving || loading}
           onClick={() => void query()}
         >
           {querying ? '查询中…' : 'API 查询'}
@@ -135,23 +142,23 @@ export function VirusTotal({
               spellCheck={false}
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              placeholder={configured ? '已设置 · 仅本次会话有效' : '粘贴你的 API Key'}
-              disabled={saving || !native.available}
+              placeholder={configured ? '已保存 · 下次启动自动加载' : '粘贴你的 API Key'}
+              disabled={saving || loading || !native.available}
             />
-            <button type="submit" disabled={saving || !key.trim() || !native.available}>
+            <button type="submit" disabled={saving || loading || !key.trim() || !native.available}>
               保存 Key
             </button>
             <button
               type="button"
-              disabled={saving || !configured || !native.available}
+              disabled={saving || loading || !configured || !native.available}
               onClick={() => void configure('')}
             >
               清除 Key
             </button>
           </form>
           <p className="option-note">
-            {configured ? 'Key 已设置' : 'Key 未设置'} · 关闭应用后清除 · 公共 API：4 次/分钟、500
-            次/天{' '}
+            {loading ? '正在加载已保存的 Key…' : configured ? 'Key 已保存' : 'Key 未设置'} ·
+            系统凭据存储 · 公共 API：4 次/分钟、500 次/天{' '}
             <button
               className="text-button"
               disabled={!native.available}
@@ -167,12 +174,19 @@ export function VirusTotal({
               使用限制
             </button>
           </p>
-          {settingsError && (
-            <p className="message error-text" role="alert">
-              {settingsError}
-            </p>
-          )}
         </div>
+      )}
+      {settingsError && (
+        <p className="message error-text" role="alert">
+          {settingsError}
+          <button
+            type="button"
+            onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+            disabled={loading || saving}
+          >
+            重新加载
+          </button>
+        </p>
       )}
     </section>
   );

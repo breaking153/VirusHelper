@@ -140,7 +140,7 @@ it('exports the available algorithm when SHA-256 was not selected', async () => 
   expect(await screen.findByText(/校验清单已保存/)).toBeInTheDocument();
 });
 
-it('keeps the API key in the native session, clears the input, and queries only the selected hash', async () => {
+it('saves the API key through the native bridge, clears the input, and queries only the selected hash', async () => {
   vi.mocked(native.lookupVt).mockResolvedValue({
     hash: file.hashes.sha256!,
     status: 'found',
@@ -167,6 +167,64 @@ it('keeps the API key in the native session, clears the input, and queries only 
   expect(native.lookupVt).toHaveBeenCalledWith(file.hashes.sha256);
   await user.click(screen.getByRole('button', { name: '免费网页检验' }));
   expect(native.openVtPage).toHaveBeenCalledWith('report', file.hashes.sha256);
+});
+
+it('automatically uses a saved key on startup and clears the saved credential on request', async () => {
+  vi.mocked(native.vtSettings).mockResolvedValue({ configured: true });
+  vi.mocked(native.configureVt).mockResolvedValue({ configured: false });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '选项' }));
+  expect(await screen.findByText(/Key 已保存/)).toBeInTheDocument();
+  expect(screen.getByLabelText('VT API Key')).toHaveValue('');
+  await user.click(screen.getByRole('button', { name: '清除 Key' }));
+  expect(await screen.findByText(/Key 未设置/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '清除 Key' })).toBeDisabled();
+});
+
+it('shows storage failures without claiming that the key was saved', async () => {
+  vi.mocked(native.configureVt).mockRejectedValue({
+    code: 'credential-store',
+    message: '无法保存系统凭据',
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '选项' }));
+  await user.type(screen.getByLabelText('VT API Key'), 'test-key-for-storage');
+  await user.click(screen.getByRole('button', { name: '保存 Key' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('无法保存系统凭据');
+  expect(screen.getByLabelText('VT API Key')).toHaveValue('');
+  expect(screen.queryByText(/Key 已保存/)).not.toBeInTheDocument();
+});
+
+it('prevents editing credentials until startup restoration has completed', async () => {
+  let finish: (settings: { configured: boolean }) => void = () => {};
+  vi.mocked(native.vtSettings).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '选项' }));
+  expect(screen.getByLabelText('VT API Key')).toBeDisabled();
+  finish({ configured: true });
+  await waitFor(() => expect(screen.getByLabelText('VT API Key')).toBeEnabled());
+  expect(screen.getByText(/Key 已保存/)).toBeInTheDocument();
+});
+
+it('allows retrying automatic restoration after the credential store is unlocked', async () => {
+  vi.mocked(native.vtSettings)
+    .mockRejectedValueOnce({ code: 'credential-store', message: '系统凭据存储已锁定' })
+    .mockResolvedValueOnce({ configured: true });
+  const user = userEvent.setup();
+  render(<App />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('系统凭据存储已锁定');
+  await user.click(screen.getByRole('button', { name: '重新加载' }));
+  await user.click(screen.getByRole('button', { name: '选项' }));
+  expect(await screen.findByText(/Key 已保存/)).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
 it('distinguishes an absent report from quota errors and hides reports for another selected file', async () => {

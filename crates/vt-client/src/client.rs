@@ -72,17 +72,7 @@ impl VtClient {
     pub fn set_api_key(&self, key: String) -> Result<VtSettings, VtError> {
         let key = Zeroizing::new(key);
         let trimmed = key.trim();
-        if !trimmed.is_empty()
-            && (!(16..=256).contains(&trimmed.len())
-                || !trimmed
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'))
-        {
-            return Err(VtError::new(
-                "invalid-key",
-                "API Key 格式无效，请检查粘贴内容",
-            ));
-        }
+        crate::validate_api_key(trimmed)?;
         let mut session = self.session.lock().map_err(|_| state_error())?;
         session.key = if trimmed.is_empty() {
             None
