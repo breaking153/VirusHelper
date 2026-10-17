@@ -71,3 +71,14 @@ export interface JobSummary {
   elapsedMs: number;
   results: FileResult[];
 }
+export interface VtSettings {
+  configured: boolean;
+}
+export interface VtReport {
+  hash: string;
+  status: 'found' | 'not-found' | 'pending';
+  malicious: number;
+  suspicious: number;
+  total: number;
+  lastAnalysisDate: number | null;
+}

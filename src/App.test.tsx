@@ -17,6 +17,10 @@ vi.mock('./native', () => ({
     export: vi.fn(),
     copy: vi.fn(),
     listenDrop: vi.fn(),
+    vtSettings: vi.fn(),
+    configureVt: vi.fn(),
+    lookupVt: vi.fn(),
+    openVtPage: vi.fn(),
   },
 }));
 
@@ -47,6 +51,9 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(native.pickFiles).mockResolvedValue([file.path]);
   vi.mocked(native.clear).mockResolvedValue();
+  vi.mocked(native.vtSettings).mockResolvedValue({ configured: false });
+  vi.mocked(native.configureVt).mockResolvedValue({ configured: true });
+  vi.mocked(native.openVtPage).mockResolvedValue();
   vi.mocked(native.listenDrop).mockResolvedValue(() => {});
   vi.mocked(native.run).mockImplementation(
     async (_request: JobRequest, receive: (e: JobEvent) => void) => {
@@ -71,7 +78,7 @@ it('calculates selected files, compares pasted hashes and copies a computed hash
     '900150983CD24FB0D6963F7D28E17F72',
   );
   expect(screen.getByText('哈希一致')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: '复制 SHA-256' }));
+  await user.click(screen.getByRole('button', { name: '复制哈希' }));
   expect(native.copy).toHaveBeenCalledWith(
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
   );
@@ -121,6 +128,7 @@ it('exports the available algorithm when SHA-256 was not selected', async () => 
   vi.mocked(native.export).mockResolvedValue('C:/fixtures/checksums.md5');
   const user = userEvent.setup();
   render(<App />);
+  await user.click(screen.getByRole('button', { name: '选项' }));
   await user.click(screen.getByRole('checkbox', { name: /SHA-256/ }));
   await user.click(screen.getByRole('checkbox', { name: /BLAKE3/ }));
   await user.click(screen.getByRole('button', { name: '添加文件' }));
@@ -130,6 +138,77 @@ it('exports the available algorithm when SHA-256 was not selected', async () => 
   await user.click(screen.getByRole('button', { name: '导出清单' }));
   expect(native.export).toHaveBeenCalledWith('md5');
   expect(await screen.findByText(/校验清单已保存/)).toBeInTheDocument();
+});
+
+it('keeps the API key in the native session, clears the input, and queries only the selected hash', async () => {
+  vi.mocked(native.lookupVt).mockResolvedValue({
+    hash: file.hashes.sha256!,
+    status: 'found',
+    malicious: 3,
+    suspicious: 1,
+    total: 70,
+    lastAnalysisDate: 1720000000,
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '添加文件' }));
+  await user.click(screen.getByRole('button', { name: '开始计算' }));
+  await screen.findByText(file.hashes.sha256!);
+  expect(native.lookupVt).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: 'API 查询' }));
+  const input = screen.getByLabelText('VT API Key');
+  await user.type(input, 'test-key-for-session');
+  await user.click(screen.getByRole('button', { name: '保存 Key' }));
+  await waitFor(() => expect(input).toHaveValue(''));
+  expect(native.configureVt).toHaveBeenCalledWith('test-key-for-session');
+  expect(JSON.stringify(localStorage)).not.toContain('test-key-for-session');
+  await user.click(screen.getByRole('button', { name: 'API 查询' }));
+  expect(await screen.findByText(/检出 3 \/ 70/)).toBeInTheDocument();
+  expect(native.lookupVt).toHaveBeenCalledWith(file.hashes.sha256);
+  await user.click(screen.getByRole('button', { name: '免费网页检验' }));
+  expect(native.openVtPage).toHaveBeenCalledWith('report', file.hashes.sha256);
+});
+
+it('distinguishes an absent report from quota errors and hides reports for another selected file', async () => {
+  const other = {
+    ...file,
+    path: 'C:/fixtures/other.txt',
+    name: 'other.txt',
+    hashes: { sha256: 'f'.repeat(64) },
+  };
+  vi.mocked(native.vtSettings).mockResolvedValue({ configured: true });
+  vi.mocked(native.run).mockResolvedValue({
+    ...done,
+    total: 2,
+    completed: 2,
+    results: [file, other],
+  });
+  vi.mocked(native.lookupVt)
+    .mockResolvedValueOnce({
+      hash: file.hashes.sha256!,
+      status: 'not-found',
+      malicious: 0,
+      suspicious: 0,
+      total: 0,
+      lastAnalysisDate: null,
+    })
+    .mockRejectedValueOnce({
+      code: 'rate-limited',
+      message: 'VT 请求额度已用尽',
+      retryAfterSeconds: 30,
+    });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '添加文件' }));
+  await user.click(screen.getByRole('button', { name: '开始计算' }));
+  await screen.findByText(other.hashes.sha256);
+  await user.click(screen.getByRole('button', { name: 'API 查询' }));
+  expect(await screen.findByText(/VT 未收录/)).toBeInTheDocument();
+  await user.click(screen.getByText('other.txt'));
+  expect(screen.queryByText(/VT 未收录/)).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'API 查询' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('VT 请求额度已用尽');
+  expect(screen.getByRole('alert')).toHaveTextContent('30 秒');
 });
 
 it('keeps imported expectations when adding more input files', async () => {

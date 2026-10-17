@@ -100,3 +100,9 @@ export const baseName = (path: string) => {
   const parts = path.split(/[/\\]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;
 };
+
+export function checksumLine(hash: string, name: string): string {
+  const escaped = /[\\\n\r]/.test(name);
+  const file = name.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+  return `${escaped ? '\\' : ''}${hash} *${file}`;
+}

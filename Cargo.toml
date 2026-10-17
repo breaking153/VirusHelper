@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/hash-core", "src-tauri"]
+members = ["crates/hash-core", "crates/vt-client", "src-tauri"]
 resolver = "2"
 
 [workspace.package]
