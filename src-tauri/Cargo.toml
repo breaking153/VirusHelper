@@ -1,0 +1,20 @@
+[package]
+name = "virus-helper"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Offline cross-platform file hashing and checksum verification"
+
+[lib]
+name = "virus_helper_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+hash-core = { path = "../crates/hash-core" }
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"

@@ -90,3 +90,14 @@ fn renders_portable_sfv() {
     assert!(text.contains("some file.zip 352441C2"));
     assert_eq!(parse_manifest(&text, None).unwrap()[0].hash, "352441c2");
 }
+
+#[test]
+fn sfv_supports_hexadecimal_filenames_and_standard_semicolon_comments() {
+    let entries = parse_manifest("deadbeef 352441C2\n", None).unwrap();
+    assert_eq!(entries[0].name, "deadbeef");
+    let rendered = render_manifest(&[("deadbeef".into(), "352441c2".into())], Crc32).unwrap();
+    assert!(
+        rendered.starts_with(';'),
+        "SFV comments must use the standard semicolon prefix"
+    );
+}

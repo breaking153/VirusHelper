@@ -19,7 +19,10 @@ pub fn parse_manifest(
         let line = raw.trim_end_matches('\r');
         let error =
             || HashError::InvalidInput(format!("清单第 {} 行格式无效或与所选算法不符", index + 1));
-        if let Some(id) = line.strip_prefix("# VirusHelper algorithm: ") {
+        if let Some(id) = line
+            .strip_prefix("# VirusHelper algorithm: ")
+            .or_else(|| line.strip_prefix("; VirusHelper algorithm: "))
+        {
             algorithm_hint = Some(
                 Algorithm::ALL
                     .into_iter()
@@ -37,32 +40,36 @@ pub fn parse_manifest(
         let split = body.find(char::is_whitespace).ok_or_else(error)?;
         let first = &body[..split];
         let remainder = &body[split..];
-        let (name, hash, algorithm) = if first.bytes().all(|b| b.is_ascii_hexdigit()) {
-            let name = remainder
-                .strip_prefix("  ")
-                .or_else(|| remainder.strip_prefix(" *"))
-                .ok_or_else(error)?;
-            let algorithm = algorithm_hint
-                .or(match first.len() {
-                    8 => Some(Algorithm::Crc32),
-                    16 => Some(Algorithm::Xxh64),
-                    32 => Some(Algorithm::Md5),
-                    40 => Some(Algorithm::Sha1),
-                    64 => Some(Algorithm::Sha256),
-                    128 => Some(Algorithm::Sha512),
-                    _ => None,
-                })
-                .ok_or_else(error)?;
-            let name = if escaped {
-                unescape_name(name).ok_or_else(error)?
+        let gnu_name = remainder
+            .strip_prefix("  ")
+            .or_else(|| remainder.strip_prefix(" *"));
+        let (name, hash, algorithm) =
+            if first.bytes().all(|b| b.is_ascii_hexdigit()) && gnu_name.is_some() {
+                let name = remainder
+                    .strip_prefix("  ")
+                    .or_else(|| remainder.strip_prefix(" *"))
+                    .ok_or_else(error)?;
+                let algorithm = algorithm_hint
+                    .or(match first.len() {
+                        8 => Some(Algorithm::Crc32),
+                        16 => Some(Algorithm::Xxh64),
+                        32 => Some(Algorithm::Md5),
+                        40 => Some(Algorithm::Sha1),
+                        64 => Some(Algorithm::Sha256),
+                        128 => Some(Algorithm::Sha512),
+                        _ => None,
+                    })
+                    .ok_or_else(error)?;
+                let name = if escaped {
+                    unescape_name(name).ok_or_else(error)?
+                } else {
+                    name.to_string()
+                };
+                (name, first, algorithm)
             } else {
-                name.to_string()
+                let (name, hash) = line.rsplit_once(char::is_whitespace).ok_or_else(error)?;
+                (name.to_string(), hash, Algorithm::Crc32)
             };
-            (name, first, algorithm)
-        } else {
-            let (name, hash) = line.rsplit_once(char::is_whitespace).ok_or_else(error)?;
-            (name.to_string(), hash, Algorithm::Crc32)
-        };
         if name.is_empty() || name.contains('\0') || !algorithm.valid_hash(hash) {
             return Err(error());
         }
@@ -100,7 +107,12 @@ pub fn render_manifest(
     entries: &[(String, String)],
     algorithm: Algorithm,
 ) -> Result<String, HashError> {
-    let mut text = format!("# VirusHelper algorithm: {}\n", algorithm.id());
+    let comment = if algorithm == Algorithm::Crc32 {
+        ';'
+    } else {
+        '#'
+    };
+    let mut text = format!("{comment} VirusHelper algorithm: {}\n", algorithm.id());
     for (name, hash) in entries {
         if name.is_empty() || name.contains('\0') || !algorithm.valid_hash(hash) {
             return Err(HashError::InvalidInput("无法导出无效的文件名或哈希".into()));

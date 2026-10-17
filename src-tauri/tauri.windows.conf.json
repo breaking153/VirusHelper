@@ -1,0 +1,3 @@
+{
+  "bundle": { "targets": ["nsis"], "windows": { "nsis": { "languages": ["SimpChinese", "English"], "displayLanguageSelector": true } } }
+}

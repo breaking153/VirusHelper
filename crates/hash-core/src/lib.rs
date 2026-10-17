@@ -1,5 +1,6 @@
 mod algorithm;
 mod batch;
+mod export;
 mod hashing;
 mod manifest;
 
@@ -8,6 +9,7 @@ pub use batch::{
     run_batch, ChecksumTarget, DiscoveredFile, FileResult, FileStatus, HashCheck, JobEvent,
     JobRequest, JobSummary,
 };
+pub use export::write_manifest;
 pub use hashing::{hash_file, hash_reader};
 pub use manifest::{parse_manifest, render_manifest, resolve_entry, ChecksumEntry};
 
