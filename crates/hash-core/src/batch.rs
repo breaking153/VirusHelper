@@ -101,7 +101,11 @@ fn path_key(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
-fn discover(paths: &[PathBuf], cancel: &AtomicBool) -> Result<Vec<DiscoveredFile>, HashError> {
+fn discover(
+    paths: &[PathBuf],
+    file_only: &BTreeSet<PathBuf>,
+    cancel: &AtomicBool,
+) -> Result<Vec<DiscoveredFile>, HashError> {
     let mut found = BTreeMap::new();
     let mut insert = |path: &Path, error: Option<String>| -> Result<(), HashError> {
         let path = path_key(path);
@@ -129,7 +133,7 @@ fn discover(paths: &[PathBuf], cancel: &AtomicBool) -> Result<Vec<DiscoveredFile
             break;
         }
         match std::fs::metadata(path) {
-            Ok(meta) if meta.is_dir() => {
+            Ok(meta) if meta.is_dir() && !file_only.contains(&path_key(path)) => {
                 for entry in WalkDir::new(path).follow_links(false).min_depth(1) {
                     if cancel.load(Ordering::Relaxed) {
                         break;
@@ -144,7 +148,10 @@ fn discover(paths: &[PathBuf], cancel: &AtomicBool) -> Result<Vec<DiscoveredFile
                 }
             }
             Ok(meta) if meta.is_file() => insert(path, None)?,
-            Ok(_) => insert(path, Some("仅支持常规文件与目录".into()))?,
+            Ok(_) => insert(
+                path,
+                Some("校验条目必须指向常规文件，不能是文件夹或特殊文件".into()),
+            )?,
             Err(error) => insert(path, Some(error.to_string()))?,
         }
     }
@@ -185,7 +192,7 @@ pub fn run_batch(
         }
         algorithms.insert(target.algorithm);
     }
-    let files = discover(&request.paths, cancel)?;
+    let files = discover(&request.paths, &expected.keys().cloned().collect(), cancel)?;
     let total_bytes = files.iter().fold(0_u64, |n, f| n.saturating_add(f.size));
     let mut summary = JobSummary {
         total: files.len(),

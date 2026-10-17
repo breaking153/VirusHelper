@@ -139,3 +139,96 @@ pub async fn export_results(
     })
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tauri::{
+        test::{mock_builder, mock_context, noop_assets, MockRuntime},
+        Manager,
+    };
+
+    fn app() -> tauri::App<MockRuntime> {
+        mock_builder()
+            .manage(AppState::default())
+            .build(mock_context(noop_assets()))
+            .unwrap()
+    }
+
+    #[test]
+    fn native_job_streams_serialized_results_and_stores_only_computed_hashes() {
+        let app = app();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("abc.txt");
+        std::fs::write(&path, b"abc").unwrap();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = events.clone();
+        let channel = Channel::new(move |message| {
+            captured
+                .lock()
+                .unwrap()
+                .push(message.deserialize::<serde_json::Value>().unwrap());
+            Ok(())
+        });
+        let summary = tauri::async_runtime::block_on(run_job(
+            app.state(),
+            JobRequest {
+                paths: vec![path],
+                algorithms: vec![Algorithm::Sha256],
+                checksums: vec![],
+            },
+            channel,
+        ))
+        .unwrap();
+        assert_eq!(summary.completed, 1);
+        let events = events.lock().unwrap();
+        assert_eq!(events[0]["type"], "discovered");
+        assert_eq!(events[0]["totalBytes"], 3);
+        let file = events.iter().find(|event| event["type"] == "file").unwrap();
+        assert_eq!(
+            file["result"]["hashes"]["sha256"],
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(app.state::<AppState>().0.lock().unwrap().results.len(), 1);
+        clear_results(app.state()).unwrap();
+        assert!(app.state::<AppState>().0.lock().unwrap().results.is_empty());
+    }
+
+    #[test]
+    fn active_job_cannot_be_overwritten_or_cleared_and_can_be_cancelled() {
+        let app = app();
+        let token = Arc::new(AtomicBool::new(false));
+        app.state::<AppState>().0.lock().unwrap().active = Some(token.clone());
+        let error = tauri::async_runtime::block_on(run_job(
+            app.state(),
+            JobRequest {
+                paths: vec![],
+                algorithms: vec![],
+                checksums: vec![],
+            },
+            Channel::new(|_| Ok(())),
+        ))
+        .unwrap_err();
+        assert!(error.contains("已有任务"));
+        assert!(clear_results(app.state()).is_err());
+        cancel_job(app.state()).unwrap();
+        assert!(token.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn invalid_requests_release_the_native_job_lock() {
+        let app = app();
+        let failed = tauri::async_runtime::block_on(run_job(
+            app.state(),
+            JobRequest {
+                paths: vec![],
+                algorithms: vec![],
+                checksums: vec![],
+            },
+            Channel::new(|_| Ok(())),
+        ));
+        assert!(failed.is_err());
+        assert!(app.state::<AppState>().0.lock().unwrap().active.is_none());
+        clear_results(app.state()).unwrap();
+    }
+}

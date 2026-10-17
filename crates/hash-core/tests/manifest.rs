@@ -101,3 +101,36 @@ fn sfv_supports_hexadecimal_filenames_and_standard_semicolon_comments() {
         "SFV comments must use the standard semicolon prefix"
     );
 }
+
+#[test]
+fn sfv_exports_preserve_comment_like_and_hexadecimal_file_names() {
+    let root = tempfile::tempdir().unwrap();
+    let names = [";important.bin", "#important.bin", "deadbeef  notes.txt"];
+    let entries: Vec<_> = names
+        .iter()
+        .map(|name| {
+            std::fs::write(root.path().join(name), b"abc").unwrap();
+            (name.to_string(), "352441c2".to_string())
+        })
+        .collect();
+    let rendered = render_manifest(&entries, Crc32).unwrap();
+    let parsed = parse_manifest(&rendered, None).unwrap();
+    assert_eq!(parsed.len(), 3);
+    for (entry, name) in parsed.iter().zip(names) {
+        assert_eq!(entry.hash, "352441c2");
+        assert_eq!(
+            resolve_entry(root.path(), &entry.name)
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            root.path().join(name).canonicalize().unwrap()
+        );
+    }
+}
+
+#[test]
+fn explicit_sfv_context_disambiguates_aligned_hexadecimal_names() {
+    let parsed = parse_manifest("deadbeef  352441C2\n", Some(Crc32)).unwrap();
+    assert_eq!(parsed[0].name, "deadbeef");
+    assert_eq!(parsed[0].hash, "352441c2");
+}

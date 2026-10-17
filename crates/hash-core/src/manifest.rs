@@ -43,6 +43,23 @@ pub fn parse_manifest(
         let gnu_name = remainder
             .strip_prefix("  ")
             .or_else(|| remainder.strip_prefix(" *"));
+        let sfv_entry = line
+            .rsplit_once(char::is_whitespace)
+            .filter(|(_, hash)| Algorithm::Crc32.valid_hash(hash));
+        if algorithm_hint == Some(Algorithm::Crc32) {
+            if let Some((name, hash)) = sfv_entry {
+                let name = name.trim_end();
+                if name.is_empty() || name.contains('\0') {
+                    return Err(error());
+                }
+                entries.push(ChecksumEntry {
+                    name: name.into(),
+                    algorithm: Algorithm::Crc32,
+                    hash: hash.to_ascii_lowercase(),
+                });
+                continue;
+            }
+        }
         let (name, hash, algorithm) =
             if first.bytes().all(|b| b.is_ascii_hexdigit()) && gnu_name.is_some() {
                 let name = remainder
@@ -68,7 +85,7 @@ pub fn parse_manifest(
                 (name, first, algorithm)
             } else {
                 let (name, hash) = line.rsplit_once(char::is_whitespace).ok_or_else(error)?;
-                (name.to_string(), hash, Algorithm::Crc32)
+                (name.trim_end().to_string(), hash, Algorithm::Crc32)
             };
         if name.is_empty() || name.contains('\0') || !algorithm.valid_hash(hash) {
             return Err(error());
@@ -118,12 +135,13 @@ pub fn render_manifest(
             return Err(HashError::InvalidInput("无法导出无效的文件名或哈希".into()));
         }
         if algorithm == Algorithm::Crc32 {
-            if name.contains(['\r', '\n']) {
+            if name.contains(['\r', '\n']) || name.chars().last().is_some_and(char::is_whitespace) {
                 return Err(HashError::InvalidInput(
-                    "SFV 不支持文件名中的换行，请选择其他算法导出".into(),
+                    "SFV 不支持文件名中的换行或末尾空白，请选择其他算法导出".into(),
                 ));
             }
-            text.push_str(&format!("{name} {}\n", hash.to_ascii_uppercase()));
+            // Prevent comment-like and all-hex filenames from being interpreted as syntax.
+            text.push_str(&format!("./{name} {}\n", hash.to_ascii_uppercase()));
         } else {
             let escaped = name.contains(['\\', '\n', '\r']);
             let encoded = name

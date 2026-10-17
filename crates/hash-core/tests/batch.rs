@@ -128,3 +128,24 @@ fn rejects_conflicting_expectations_and_invalid_requests() {
     ];
     assert!(run_batch(req, &AtomicBool::new(false), |_| {}).is_err());
 }
+
+#[test]
+fn a_manifest_directory_entry_is_an_error_instead_of_unchecked_children() {
+    let root = tempfile::tempdir().unwrap();
+    let folder = root.path().join("folder");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("child.txt"), b"abc").unwrap();
+    let mut req = request(vec![folder.clone()]);
+    req.checksums = vec![ChecksumTarget {
+        path: folder,
+        root: root.path().into(),
+        algorithm: Md5,
+        hash: "900150983cd24fb0d6963f7d28e17f72".into(),
+    }];
+    let summary = run_batch(req, &AtomicBool::new(false), |_| {}).unwrap();
+    assert_eq!(
+        (summary.total, summary.errors, summary.completed),
+        (1, 1, 0)
+    );
+    assert_eq!(summary.results[0].status, FileStatus::Error);
+}
