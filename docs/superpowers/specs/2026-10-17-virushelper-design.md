@@ -5,6 +5,7 @@
 ## 范围
 
 - Rust + Tauri 2 + React + TypeScript，中文界面，明暗主题。
+- 最低目标为 Windows 10/11、macOS 12（Intel / Apple Silicon）；前端转译目标包含 Safari 15，避免依赖更高版本的语法或 Array.at。
 - 添加多个文件、添加文件夹和原生拖放；递归扫描，去重，跳过目录中的符号链接，报告不可读取的项目。
 - MD5、SHA-1、SHA-256、SHA-512、SHA3-256、BLAKE3、CRC32、xxHash64。
 - 一次流式读取同时计算所选算法，1 MiB 读取缓冲区；后台任务与界面分离；任务进度和取消；逐文件错误不终止整个批次。
