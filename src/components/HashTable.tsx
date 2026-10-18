@@ -50,7 +50,7 @@ export function HashTable({
             {!entries.length ? (
               <tr>
                 <td colSpan={3} className="empty-cell">
-                  添加文件后，点击“开始计算”
+                  添加文件后自动计算
                 </td>
               </tr>
             ) : (

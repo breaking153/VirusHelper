@@ -1,4 +1,4 @@
-# 验证记录 · 2026-10-17
+# 验证记录 · 2026-10-18
 
 ## 已执行
 
@@ -9,7 +9,7 @@
 | `cargo test --workspace --locked` | 44 项通过（核心库 23 + Tauri 原生桥接/凭据/VT 13 + VT 客户端 8） |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | 通过，无警告 |
 | `cargo fmt --all -- --check` | 通过 |
-| `npm test` | 19 项通过 |
+| `npm test` | 26 项通过 |
 | `npm run format:check` | 通过 |
 | `npm run build` | TypeScript 检查与 Vite 生产构建通过 |
 | `npm audit --audit-level=high` | 0 个已知漏洞 |
@@ -17,9 +17,11 @@
 
 安装包：`target/release/bundle/nsis/VirusHelper_0.1.0_x64-setup.exe`。
 
-SHA-256：`26f6a8b24de3713a058ca98d1802afb035164975e443b647619e15b4e0772b3a`。
+SHA-256：`94101d01928ed36f0cc1cd2e41c772374f28709c9db789015ab34e98078f20b8`。
 
-本轮界面改为 OpenHashTab 风格三列表格，移除侧栏和详情面板。浏览器验证使用本地开发服务器：查看 900×620 默认窗口的明暗主题、640×440 最小窗口及 320×760 窄屏，检查折叠选项与 VT 设置布局；窄屏满足 `documentElement.scrollWidth <= documentElement.clientWidth`。最小高度下展开选项允许纵向滚动。控制台未发现 error / warn。为 macOS 12 的 Safari 15 添加 `100vh` 高度回退。文件操作在浏览器预览中明确禁用。
+界面采用 OpenHashTab 风格三列表格，无侧栏和独立详情面板。本轮默认窗口由 900×620 缩小至 760×500；浏览器检查 760×500 默认布局与 640×440 最小窗口的折叠选项，最小窗口满足 `documentElement.scrollWidth <= documentElement.clientWidth`。此前已验证明暗主题与 320×760 窄屏。最小高度下展开选项允许纵向滚动。控制台未发现 error / warn。macOS 12 的 Safari 15 使用 `100vh` 高度回退。文件操作在浏览器预览中明确禁用。
+
+2026-10-18 自动计算验证：默认仅 MD5，选文件后自动计算；改变算法自动重算，计算期间也能更改，快速变更只执行最新待处理配置。必须等待旧任务与取消确认均结束后才开始下一任务；旧任务晚到事件不能污染新结果。手动取消清空待处理请求，取消 IPC 临时失败后可再次尝试。测试还覆盖卸载组件时取消任务、主题变化不重算、清单期望不丢失及原有错误重试/导出/VT 交互。
 
 前端交互测试覆盖计算、原生错误重试、取消、MD5 单算法导出、追加文件保留清单、手动比对、哈希/校验行复制、100 行分页，以及 VT Key 保存后清空输入框、无自动查询、只提交哈希、免费网页入口、未收录/额度错误和切换文件后隐藏旧报告。
 
@@ -34,6 +36,8 @@ VT 测试通过本地 HTTP fixture 验证真实 GET 路径和 `x-apikey` 请求�
 本轮紧凑界面和 VT 集成独立复审通过；`git diff --check` 和 Impeccable 一次性静态检测通过。Webview CSP 没有新增外网权限，网络和固定网页跳转由 Rust 命令处理。
 
 追加的 Key 持久化功能独立复审通过。复审发现的 macOS 删除状态忽略，以及删除确认读取失败后的会话同步问题，均有失败复现、修复及回归验证。
+
+自动计算与任务切换独立复审通过；取消失败后不可重试的问题已通过失败复现修复。新版 Windows 可执行文件已直接启动，未执行安装程序。
 
 ## 平台限制
 

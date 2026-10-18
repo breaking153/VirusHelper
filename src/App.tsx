@@ -24,12 +24,12 @@ function errorMessage(error: unknown): string {
 export default function App() {
   const [theme, setTheme] = useState(initialTheme);
   const [options, setOptions] = useState(false);
-  const [algorithms, setAlgorithms] = useState<Algorithm[]>(['sha256', 'blake3', 'md5']);
+  const [algorithms, setAlgorithms] = useState<Algorithm[]>(['md5']);
   const [paths, setPaths] = useState<string[]>([]);
   const [checksums, setChecksums] = useState<ChecksumTarget[]>([]);
   const [manifest, setManifest] = useState<string | null>(null);
   const [hint, setHint] = useState<Algorithm | ''>('');
-  const [exportAlgorithm, setExportAlgorithm] = useState<Algorithm>('sha256');
+  const [exportAlgorithm, setExportAlgorithm] = useState<Algorithm>('md5');
   const [selection, setSelection] = useState<{ path: string; algorithm: Algorithm | null } | null>(
     null,
   );
@@ -42,6 +42,19 @@ export default function App() {
   const locked = job.busy || working;
   const disabled = locked || !native.available;
   const resetJob = job.reset;
+  const runJob = job.run;
+  const cancelJob = job.cancel;
+
+  useEffect(() => {
+    if (!native.available) return;
+    setCancelling(false);
+    if (!paths.length || !algorithms.length) {
+      void cancelJob().catch((error) => setNotice({ text: errorMessage(error), error: true }));
+      return;
+    }
+    setNotice(null);
+    void runJob({ paths, algorithms, checksums });
+  }, [paths, algorithms, checksums, runJob, cancelJob]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -140,7 +153,7 @@ export default function App() {
   const cancel = async () => {
     setCancelling(true);
     try {
-      await native.cancel();
+      await cancelJob();
     } catch (error) {
       setNotice({ text: errorMessage(error), error: true });
       setCancelling(false);
@@ -229,7 +242,7 @@ export default function App() {
             onClick={start}
             disabled={disabled || !paths.length || !algorithms.length}
           >
-            {job.summary ? '重新计算' : '开始计算'}
+            重新计算
           </button>
         )}
         <button
@@ -313,7 +326,7 @@ export default function App() {
       <VirusTotal hash={vtHash} options={options} openOptions={() => setOptions(true)} />
       {options && (
         <section id="options" className="options" aria-label="计算选项">
-          <fieldset disabled={locked} className="algorithms">
+          <fieldset disabled={working} className="algorithms">
             <legend>计算算法</legend>
             {ALGORITHMS.map((a) => (
               <label key={a.id}>

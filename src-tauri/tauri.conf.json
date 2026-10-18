@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "VirusHelper · 文件哈希与校验",
-        "width": 900,
-        "height": 620,
+        "width": 760,
+        "height": 500,
         "minWidth": 640,
         "minHeight": 440,
         "center": true,

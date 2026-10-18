@@ -1,9 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { native } from './native';
-import type { FileResult, JobEvent, JobRequest, JobSummary } from './types';
+import type { Algorithm, FileResult, JobEvent, JobRequest, JobSummary } from './types';
 
 vi.mock('./native', () => ({
   native: {
@@ -56,20 +56,30 @@ beforeEach(() => {
   vi.mocked(native.openVtPage).mockResolvedValue();
   vi.mocked(native.listenDrop).mockResolvedValue(() => {});
   vi.mocked(native.run).mockImplementation(
-    async (_request: JobRequest, receive: (e: JobEvent) => void) => {
-      receive({ type: 'discovered', files: [file], totalBytes: 3 });
-      receive({ type: 'file', result: file });
-      return done;
+    async (request: JobRequest, receive: (e: JobEvent) => void) => {
+      const computed: FileResult = {
+        ...file,
+        hashes: Object.fromEntries(
+          Object.entries(file.hashes).filter(
+            ([id]) =>
+              request.algorithms.includes(id as Algorithm) ||
+              request.checksums.some((target) => target.algorithm === id),
+          ),
+        ),
+      };
+      receive({ type: 'discovered', files: [computed], totalBytes: 3 });
+      receive({ type: 'file', result: computed });
+      return { ...done, results: [computed] };
     },
   );
 });
 
-it('calculates selected files, compares pasted hashes and copies a computed hash', async () => {
+it('automatically calculates MD5 for selected files, compares pasted hashes and copies the result', async () => {
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole('button', { name: '添加文件' }));
-  await user.click(screen.getByRole('button', { name: '开始计算' }));
-  expect(await screen.findByText(file.hashes.sha256!)).toBeInTheDocument();
+  expect(await screen.findByText(file.hashes.md5!)).toBeInTheDocument();
+  expect(screen.queryByText(file.hashes.sha256!)).not.toBeInTheDocument();
   await user.type(screen.getByRole('textbox', { name: '预期哈希' }), '0'.repeat(32));
   expect(screen.getByText('未找到匹配的哈希')).toBeInTheDocument();
   await user.clear(screen.getByRole('textbox', { name: '预期哈希' }));
@@ -79,9 +89,7 @@ it('calculates selected files, compares pasted hashes and copies a computed hash
   );
   expect(screen.getByText('哈希一致')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '复制哈希' }));
-  expect(native.copy).toHaveBeenCalledWith(
-    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
-  );
+  expect(native.copy).toHaveBeenCalledWith('900150983cd24fb0d6963f7d28e17f72');
 });
 
 it('shows native errors and allows the user to retry', async () => {
@@ -89,11 +97,10 @@ it('shows native errors and allows the user to retry', async () => {
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole('button', { name: '添加文件' }));
-  await user.click(screen.getByRole('button', { name: '开始计算' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('访问被拒绝');
-  expect(screen.getByRole('button', { name: '开始计算' })).toBeEnabled();
-  await user.click(screen.getByRole('button', { name: '开始计算' }));
-  expect(await screen.findByText(file.hashes.sha256!)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '重新计算' })).toBeEnabled();
+  await user.click(screen.getByRole('button', { name: '重新计算' }));
+  expect(await screen.findByText(file.hashes.md5!)).toBeInTheDocument();
 });
 
 it('cancels an active task and shows its final cancelled state', async () => {
@@ -115,7 +122,7 @@ it('cancels an active task and shows its final cancelled state', async () => {
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole('button', { name: '添加文件' }));
-  await user.click(screen.getByRole('button', { name: '开始计算' }));
+  await screen.findByRole('button', { name: '取消计算' });
   expect(screen.getByRole('button', { name: '添加文件' })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: '取消计算' }));
   await waitFor(() => expect(screen.getByRole('button', { name: '重新计算' })).toBeEnabled());
@@ -129,10 +136,7 @@ it('exports the available algorithm when SHA-256 was not selected', async () => 
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole('button', { name: '选项' }));
-  await user.click(screen.getByRole('checkbox', { name: /SHA-256/ }));
-  await user.click(screen.getByRole('checkbox', { name: /BLAKE3/ }));
   await user.click(screen.getByRole('button', { name: '添加文件' }));
-  await user.click(screen.getByRole('button', { name: '开始计算' }));
   await screen.findByText(file.hashes.md5!);
   expect(screen.getByRole('combobox', { name: '导出算法' })).toHaveValue('md5');
   await user.click(screen.getByRole('button', { name: '导出清单' }));
@@ -142,7 +146,7 @@ it('exports the available algorithm when SHA-256 was not selected', async () => 
 
 it('saves the API key through the native bridge, clears the input, and queries only the selected hash', async () => {
   vi.mocked(native.lookupVt).mockResolvedValue({
-    hash: file.hashes.sha256!,
+    hash: file.hashes.md5!,
     status: 'found',
     malicious: 3,
     suspicious: 1,
@@ -152,8 +156,7 @@ it('saves the API key through the native bridge, clears the input, and queries o
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole('button', { name: '添加文件' }));
-  await user.click(screen.getByRole('button', { name: '开始计算' }));
-  await screen.findByText(file.hashes.sha256!);
+  await screen.findByText(file.hashes.md5!);
   expect(native.lookupVt).not.toHaveBeenCalled();
   await user.click(screen.getByRole('button', { name: 'API 查询' }));
   const input = screen.getByLabelText('VT API Key');
@@ -164,9 +167,9 @@ it('saves the API key through the native bridge, clears the input, and queries o
   expect(JSON.stringify(localStorage)).not.toContain('test-key-for-session');
   await user.click(screen.getByRole('button', { name: 'API 查询' }));
   expect(await screen.findByText(/检出 3 \/ 70/)).toBeInTheDocument();
-  expect(native.lookupVt).toHaveBeenCalledWith(file.hashes.sha256);
+  expect(native.lookupVt).toHaveBeenCalledWith(file.hashes.md5);
   await user.click(screen.getByRole('button', { name: '免费网页检验' }));
-  expect(native.openVtPage).toHaveBeenCalledWith('report', file.hashes.sha256);
+  expect(native.openVtPage).toHaveBeenCalledWith('report', file.hashes.md5);
 });
 
 it('automatically uses a saved key on startup and clears the saved credential on request', async () => {
@@ -258,7 +261,6 @@ it('distinguishes an absent report from quota errors and hides reports for anoth
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole('button', { name: '添加文件' }));
-  await user.click(screen.getByRole('button', { name: '开始计算' }));
   await screen.findByText(other.hashes.sha256);
   await user.click(screen.getByRole('button', { name: 'API 查询' }));
   expect(await screen.findByText(/VT 未收录/)).toBeInTheDocument();
@@ -283,11 +285,75 @@ it('keeps imported expectations when adding more input files', async () => {
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole('button', { name: '导入清单' }));
+  await screen.findByText(file.hashes.md5!);
   await user.click(screen.getByRole('button', { name: '添加文件' }));
-  await user.click(screen.getByRole('button', { name: '开始计算' }));
   await screen.findByText(file.hashes.md5!);
   expect(native.run).toHaveBeenCalledWith(
     expect.objectContaining({ checksums: [target] }),
+    expect.any(Function),
+  );
+});
+
+it('automatically recomputes when the selected algorithms change without extra runs for theme changes', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '添加文件' }));
+  await screen.findByText(file.hashes.md5!);
+  expect(native.run).toHaveBeenLastCalledWith(
+    expect.objectContaining({ algorithms: ['md5'] }),
+    expect.any(Function),
+  );
+  await user.click(screen.getByRole('button', { name: '选项' }));
+  await user.click(screen.getByRole('checkbox', { name: 'MD5' }));
+  await user.click(screen.getByRole('checkbox', { name: 'SHA-256' }));
+  expect(await screen.findByText(file.hashes.sha256!)).toBeInTheDocument();
+  expect(screen.queryByText(file.hashes.md5!)).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(native.run).toHaveBeenLastCalledWith(
+      expect.objectContaining({ algorithms: ['sha256'] }),
+      expect.any(Function),
+    ),
+  );
+  const count = vi.mocked(native.run).mock.calls.length;
+  await user.selectOptions(screen.getByLabelText('主题'), 'dark');
+  expect(native.run).toHaveBeenCalledTimes(count);
+});
+
+it('allows changing algorithms during computation and restarts only the latest selection', async () => {
+  let finish: (summary: JobSummary) => void = () => {};
+  let acknowledge: () => void = () => {};
+  vi.mocked(native.run).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  vi.mocked(native.cancel).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = () => {
+          finish({ ...done, cancelled: true, completed: 0, results: [] });
+          resolve();
+        };
+      }),
+  );
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '添加文件' }));
+  await screen.findByRole('button', { name: '取消计算' });
+  await user.click(screen.getByRole('button', { name: '选项' }));
+  expect(screen.getByRole('checkbox', { name: 'SHA-256' })).toBeEnabled();
+  await user.click(screen.getByRole('checkbox', { name: 'SHA-256' }));
+  await user.click(screen.getByRole('checkbox', { name: 'MD5' }));
+  expect(native.cancel).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    acknowledge();
+  });
+  expect(await screen.findByText(file.hashes.sha256!)).toBeInTheDocument();
+  expect(screen.queryByText(file.hashes.md5!)).not.toBeInTheDocument();
+  expect(native.run).toHaveBeenCalledTimes(2);
+  expect(native.run).toHaveBeenLastCalledWith(
+    expect.objectContaining({ algorithms: ['sha256'] }),
     expect.any(Function),
   );
 });
