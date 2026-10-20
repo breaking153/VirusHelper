@@ -8,6 +8,8 @@
 
 仓库 Secrets 需要 `TAURI_SIGNING_PRIVATE_KEY`，内容为 Tauri signer 私钥。当前使用无额外密码的专用更新签名密钥；其安全依赖本机文件权限和 GitHub Secrets 访问权限。必须备份私钥，丢失后已安装用户无法验证新密钥签名的更新。此密钥与 Windows Authenticode / Apple Developer 签名相互独立。
 
+本机私钥保存在 `%USERPROFILE%\.tauri\virushelper.key`，文件权限仅允许当前用户访问；公钥已写入 `src-tauri/tauri.conf.json`。请备份私钥，不要提交到仓库或放入 Release。
+
 推送 `v<版本>` 标签后，发布工作流在三个原生 runner 上完成检查、构建和签名：
 
 | 平台 | Rust target | 分发包 | 更新包 |

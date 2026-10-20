@@ -1,4 +1,18 @@
-# 验证记录 · 2026-10-18
+# 验证记录
+
+## 2026-10-20 · v0.2.0 右键菜单与签名更新
+
+- 本机 Windows：Rust 46 项测试、Clippy（警告视为错误）、Rust/前端格式检查、TypeScript 与 Vite 生产构建通过。前端 33 项与发布清单 4 项测试通过，npm audit 无已知漏洞。
+- 三个平台的[云端质量检查](https://github.com/breaking153/VirusHelper/actions/runs/39372387507)全部通过：Windows x64、macOS Intel、macOS Apple Silicon；包含各平台 Rust 测试、Clippy、前端检查与依赖审计。
+- [签名发布工作流](https://github.com/breaking153/VirusHelper/actions/runs/39372388537)的版本验证、三平台构建和最终发布全部成功，[v0.2.0 Release](https://github.com/breaking153/VirusHelper/releases/tag/v0.2.0)已公开。下载全部 10 个公开资源，核对 `SHA256SUMS.txt` 的 9 个文件校验值，并分别验证 Windows、macOS arm64、macOS x64 更新包的 minisign 签名和签名版本；均通过。应用配置的匿名 `releases/latest/download/latest.json` 地址无需登录即可取得完整三平台清单，版本为 0.2.0。
+- Windows x64 NSIS 签名安装包已在本机生成，约 3.38 MiB；本地包 SHA-256 为 `b62f4b5394b699e41525e41ee3bb08388a4cc56e6f58959069fa86519234bd02`。使用与 updater 相同的 minisign 验证库，确认签名、内置公钥与签名版本 0.2.0 一致；篡改测试包后校验失败。
+- 已把可执行文件复制到当前用户 `AppData\Local\Programs\VirusHelper\virus-helper.exe` 并注册文件、文件夹两个固定 HKCU 菜单。检查实际注册命令后，使用系统 Shell 的 `VirusHelper.Hash` verb 打开含中文、空格和 `&` 的测试路径；进程保持运行，命令行中的选中文件路径完整，未经过 cmd/PowerShell。未运行完整安装程序。
+- 前端验证启动路径加载和自动 MD5、StrictMode 不重复计算、读取失败后手动选择可恢复；更新测试覆盖启动检查、手动重查、计算中禁用安装、失败重试、不提前重启和过期 updater 资源清理。
+- 发布测试验证三个架构必须完整、更新包名称不冲突、签名不为空、版本标签一致，以及旧版本后完成时不得替换较新 Latest。
+- 浏览器检查更新选项与 760×500 布局，无横向溢出，控制台无 error/warn；展开选项时可纵向滚动。浏览器预览不连接更新服务。
+- 独立审查通过。审查发现的多窗口静默退出问题改为 Windows `basicUi` 安装模式：安装器先询问是否关闭其他实例；发布阶段跨版本串行并按数值版本决定 Latest，防止 Latest 回退。
+
+## 2026-10-18 历史验证
 
 ## 已执行
 
@@ -41,6 +55,6 @@ VT 测试通过本地 HTTP fixture 验证真实 GET 路径和 `x-apikey` 请求�
 
 ## 平台限制
 
-本机没有执行 macOS 构建或实机交互验证。Windows、macOS Intel 和 Apple Silicon 的 GitHub Actions 配置已写入仓库，尚未推送或触发远程工作流。macOS 清单符号链接越界测试仅在 Unix 平台启用，留待 macOS CI 执行。
+本机为 Windows，没有执行 macOS 实机交互验证。macOS Intel 和 Apple Silicon 的原生测试、清单符号链接越界测试与其他质量检查已在对应 GitHub Actions runner 上通过；这不等同于 macOS 图形界面、钥匙串和实际升级过程的实机验收。
 
-本机已验证原生任务命令与 Channel 的序列化、互斥、取消和清理；原生文件选择/保存对话框的人工交互、实际安装过程和签名分发仍应在发布前进行平台验收。
+本机已验证原生任务命令与 Channel 的序列化、互斥、取消和清理，以及右键 verb 的进程启动和签名校验。完整安装/卸载及跨版本升级未在本机执行，遵循用户先不安装的要求。没有真实 VT API Key 的线上接口验证。
