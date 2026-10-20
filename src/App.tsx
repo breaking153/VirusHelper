@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { HashTable } from './components/HashTable';
 import { VirusTotal } from './components/VirusTotal';
+import { Updates } from './components/Updates';
 import { baseName, compareHash, jobProgress } from './model';
 import { native } from './native';
 import { ALGORITHMS, type Algorithm, type ChecksumTarget, type FileRow } from './types';
@@ -35,11 +36,12 @@ export default function App() {
   );
   const [expected, setExpected] = useState('');
   const [working, setWorking] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
   const job = useHashJob();
-  const locked = job.busy || working;
+  const locked = job.busy || working || updating;
   const disabled = locked || !native.available;
   const resetJob = job.reset;
   const runJob = job.run;
@@ -76,6 +78,22 @@ export default function App() {
     },
     [resetJob],
   );
+
+  useEffect(() => {
+    if (!native.available) return;
+    let disposed = false;
+    void native
+      .startupPaths()
+      .then((added) => {
+        if (!disposed && added.length) setPaths((current) => [...new Set([...current, ...added])]);
+      })
+      .catch((error) => {
+        if (!disposed) setNotice({ text: errorMessage(error), error: true });
+      });
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!native.available) return;
@@ -326,7 +344,7 @@ export default function App() {
       <VirusTotal hash={vtHash} options={options} openOptions={() => setOptions(true)} />
       {options && (
         <section id="options" className="options" aria-label="计算选项">
-          <fieldset disabled={working} className="algorithms">
+          <fieldset disabled={working || updating} className="algorithms">
             <legend>计算算法</legend>
             {ALGORITHMS.map((a) => (
               <label key={a.id}>
@@ -371,6 +389,7 @@ export default function App() {
           </div>
         </section>
       )}
+      <Updates options={options} busy={job.busy || working} onBusyChange={setUpdating} />
       <div className="results-line">
         <span>
           {job.summary

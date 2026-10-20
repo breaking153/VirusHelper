@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import App from './App';
 import { native } from './native';
 import type { Algorithm, FileResult, JobEvent, JobRequest, JobSummary } from './types';
@@ -8,6 +9,7 @@ import type { Algorithm, FileResult, JobEvent, JobRequest, JobSummary } from './
 vi.mock('./native', () => ({
   native: {
     available: true,
+    startupPaths: vi.fn(),
     pickFiles: vi.fn(),
     pickFolder: vi.fn(),
     pickManifest: vi.fn(),
@@ -49,6 +51,7 @@ const done: JobSummary = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(native.startupPaths).mockResolvedValue([]);
   vi.mocked(native.pickFiles).mockResolvedValue([file.path]);
   vi.mocked(native.clear).mockResolvedValue();
   vi.mocked(native.vtSettings).mockResolvedValue({ configured: false });
@@ -72,6 +75,30 @@ beforeEach(() => {
       return { ...done, results: [computed] };
     },
   );
+});
+
+it('loads shell-selected paths and calculates MD5 once under StrictMode', async () => {
+  vi.mocked(native.startupPaths).mockResolvedValue([file.path]);
+  render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+  expect(await screen.findByText(file.hashes.md5!)).toBeInTheDocument();
+  expect(native.run).toHaveBeenCalledTimes(1);
+  expect(native.run).toHaveBeenCalledWith(
+    expect.objectContaining({ paths: [file.path], algorithms: ['md5'] }),
+    expect.any(Function),
+  );
+});
+
+it('shows startup path errors and still permits manual file selection', async () => {
+  vi.mocked(native.startupPaths).mockRejectedValue('无法读取启动文件');
+  const user = userEvent.setup();
+  render(<App />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('无法读取启动文件');
+  await user.click(screen.getByRole('button', { name: '添加文件' }));
+  expect(await screen.findByText(file.hashes.md5!)).toBeInTheDocument();
 });
 
 it('automatically calculates MD5 for selected files, compares pasted hashes and copies the result', async () => {

@@ -13,6 +13,7 @@ import type {
 
 export const native = {
   available: isTauri(),
+  startupPaths: () => invoke<string[]>('get_startup_paths'),
   pickFiles: () => invoke<string[]>('pick_files'),
   pickFolder: () => invoke<string | null>('pick_folder'),
   pickManifest: (hint: Algorithm | null) =>

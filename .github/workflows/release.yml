@@ -1,0 +1,133 @@
+name: Publish signed desktop releases
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build (for example v0.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Verify tag and version numbers
+        run: node scripts/prepare-release.mjs verify "$RELEASE_TAG"
+      - name: Verify release assembly tests
+        run: node --test scripts/prepare-release.test.mjs
+
+  package:
+    needs: verify
+    name: Package ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows-x64
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+          - os: macos-15
+            name: macOS-arm64
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+          - os: macos-15-intel
+            name: macOS-x64
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target ${{ matrix.target }}
+      - run: rustup default stable
+      - run: npm ci --ignore-scripts
+      - run: npm run format:check
+      - run: npm test
+      - run: cargo fmt --all -- --check
+      - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: npm audit --audit-level=high
+      - name: Build and sign application and installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          test -n "$TAURI_SIGNING_PRIVATE_KEY" || { echo 'Missing updater signing key in repository Secrets'; exit 1; }
+          npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
+      - uses: actions/upload-artifact@v7
+        with:
+          name: virushelper-release-${{ matrix.name }}
+          path: |
+            target/${{ matrix.target }}/release/bundle/nsis/*.exe
+            target/${{ matrix.target }}/release/bundle/nsis/*.exe.sig
+            target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
+            target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
+            target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: package
+    concurrency:
+      group: publish-stable-release
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: virushelper-release-*
+          path: release-artifacts
+      - name: Assemble complete signed update manifest
+        run: node scripts/prepare-release.mjs prepare "$RELEASE_TAG" release-artifacts release-assets
+      - name: Publish only after every platform succeeds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" --json isDraft > existing-release.json 2>/dev/null; then
+            node -e 'if (!require("./existing-release.json").isDraft) throw Error("This version is already published; publish a new version instead")'
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "VirusHelper $RELEASE_TAG" --notes-file RELEASE_NOTES.md
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release list --exclude-drafts --exclude-pre-releases --limit 1000 --json tagName,isLatest --jq 'map(select(.isLatest)) | first | .tagName // ""' > latest-tag.txt
+          make_latest=$(node scripts/prepare-release.mjs latest "$RELEASE_TAG" "$(cat latest-tag.txt)")
+          gh release edit "$RELEASE_TAG" --draft=false "--latest=$make_latest"

@@ -2,7 +2,12 @@
   "bundle": {
     "targets": ["nsis"],
     "windows": {
-      "nsis": { "languages": ["SimpChinese", "English"], "displayLanguageSelector": true }
+      "nsis": {
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true,
+        "installMode": "currentUser",
+        "installerHooks": "./windows/installer-hooks.nsh"
+      }
     }
   }
 }

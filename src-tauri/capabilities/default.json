@@ -3,5 +3,11 @@
   "identifier": "main-window",
   "description": "Main window events and write-only clipboard access. Files are handled by Rust commands.",
   "windows": ["main"],
-  "permissions": ["core:default", "clipboard-manager:allow-write-text"]
+  "permissions": [
+    "core:default",
+    "clipboard-manager:allow-write-text",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
+    "process:allow-restart"
+  ]
 }

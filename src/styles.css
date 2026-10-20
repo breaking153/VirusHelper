@@ -311,6 +311,12 @@ tbody tr[aria-selected='true'] {
   color: var(--muted);
   font-size: 12px;
 }
+.update-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .statusbar progress {
   width: 140px;
   height: 9px;

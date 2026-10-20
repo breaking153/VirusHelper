@@ -16,7 +16,9 @@
 - 导出可移植清单；中文界面、明暗主题、键盘操作和窄窗口布局。
 - OpenHashTab 风格的紧凑三列表格：文件名、算法、哈希值；选项默认折叠。
 - VirusTotal 免费网页检验，以及配置个人 API Key 后在应用中查询已有检测报告。
-- 哈希计算离线完成；仅点击 VT 按钮时联网查询哈希，不上传文件内容，不保存文件历史。
+- 哈希计算离线完成；仅点击 VT 按钮时向 VT 查询哈希，不上传文件内容，不保存文件历史。
+- Windows 文件/文件夹右键菜单，打开选中路径并自动计算 MD5。
+- 启动检查 GitHub Release，按系统和架构下载签名更新包；选项中可手动检查更新。
 
 MD5 / SHA-1 用于兼容旧清单；CRC32 / xxHash64 用于非密码学校验。普通哈希比对只能检查是否与给定摘要一致，不能替代可信来源、数字签名或恶意软件检测。
 
@@ -77,6 +79,8 @@ Key 通过 Rust 后端保存到当前系统用户的 **Windows 凭据管理器 /
 
 ## 构建
 
+生成签名更新包前，设置环境变量 `TAURI_SIGNING_PRIVATE_KEY` 为项目维护者的签名私钥路径或内容。密钥生成、备份及 GitHub Secrets 配置见[发布文档](docs/release-and-context-menu.md)。普通本地开发使用 `npm run tauri dev`，不需要签名私钥。
+
 在 Windows 上生成 NSIS 安装程序：
 
 ```sh
@@ -96,7 +100,7 @@ npm run tauri build -- --bundles app,dmg
 仓库附带两套 GitHub Actions：
 
 - `ci.yml`：每次 push / PR，在 Windows、macOS Apple Silicon 和 macOS Intel 上运行测试、类型检查、格式检查与 Clippy。
-- `build.yml`：手动触发或推送 `v*` 标签后，在各平台构建安装包，保存为 Actions artifacts；不会自动发布 GitHub Release。
+- `release.yml`：推送 `v*` 标签或手动指定已有版本标签后，测试并构建三个平台的签名安装包；全部成功才公开 GitHub Release 和完整更新清单。
 
 工作流采用 GitHub 当前支持的 [runner 标签](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)，通过 npm 与 Cargo 锁文件安装依赖。
 
@@ -126,4 +130,8 @@ docs/superpowers/      已确认的设计与实现计划
 CONSTRAINTS.md         项目质量要求
 ```
 
-Webview 只授予主窗口事件与写入剪贴板权限；文件操作、固定 VT 网络查询和浏览器页面入口由特定 Rust 命令处理，未暴露通用 shell/文件系统或任意 URL 打开接口。生产 CSP 禁止远程脚本与 Webview 外部连接，VT 请求由后端发起。
+Webview 授予主窗口事件、写入剪贴板、签名更新检查/安装和更新后重启权限；文件操作、固定 VT 网络查询和浏览器页面入口由特定 Rust 命令处理，未暴露通用 shell/文件系统或任意 URL 打开接口。生产 CSP 禁止远程脚本与 Webview 外部连接，VT 和更新请求由原生端处理。
+
+## 发布与更新
+
+Windows 文件/文件夹右键计算、GitHub Release 签名自动更新及发布说明见 [发布与右键菜单文档](docs/release-and-context-menu.md)。下载地址：[GitHub Releases](https://github.com/breaking153/VirusHelper/releases/latest)。
