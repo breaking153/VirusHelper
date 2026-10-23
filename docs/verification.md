@@ -77,3 +77,13 @@ VT 测试通过本地 HTTP fixture 验证真实 GET 路径和 `x-apikey` 请求�
 本次安装包 SHA-256：08fc887ed4d53f5b83d02f50c8e48a1e80e24d45284d292c85825245993c5f55。
 
 限制：本次没有接管桌面验证实际菜单截图或属性页视觉布局；上述菜单证据来自真实文件系统菜单提供器的未显示菜单。Windows 11 新版第一层菜单没有实现，经典菜单和属性页才是本轮入口。完整安装/卸载、真实跨版本升级仍未执行。macOS 本轮只有条件编译隔离，尚未获得 0.2.1 CI/实机结果。发布 GitHub 的本机网络返回 EOF，0.2.1 尚未公开发布；不能用已有 0.2.0 CI 结果作为本次验证。
+
+## 2026-10-23 正式重装与桌面验收
+
+用户授权卸载并重新安装后，发现先前“本机注册通过”的独立进程仍与 Codex 共享打包环境，不能据此推断外部资源管理器可见。实际 GetFinalPathNameByHandle 将名义 AppData 安装路径解析到 `Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\VirusHelper`，且外部文件管理器没有该处理程序；因此保留上文程序化测试结果，但其验收范围仅限调用环境。
+
+已备份先前手动部署的文件，清理旧注册，并运行 NSIS 安装与其卸载程序（退出码均为 0；检查旧安装记录和 CLSID 已清理）。最终改由用户真实 Directory Opus 文件窗口双击本地安装包，完成可视化安装向导，安装位置为 `C:\Users\15313\Apps\VirusHelper`；避免由 Codex 子进程安装到其私有缓存。安装向导显示成功并创建桌面快捷方式。没有清除系统凭据或 VT API Key。
+
+最终通过 computer-use 观察并操作实际桌面：Directory Opus 文件右键菜单出现“使用 VirusHelper 计算哈希”；点击后启动 `C:\Users\15313\Apps\VirusHelper\virus-helper.exe`，对 3 字节 abc 测试文件显示 MD5 `900150983cd24fb0d6963f7d28e17f72`。同一文件的系统属性出现“VirusHelper 哈希”标签，默认 MD5 正确；选择 SHA256 后自动更新为 `ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad`，显示完成 1 / 1、错误 0。主程序与属性页保留打开供用户体验。没有强制重启 Explorer 或 Directory Opus。
+
+因此：真实桌面经典菜单、属性页布局和算法切换已验收；不再属于“未验证视觉”项目。Windows 11 新版第一层仍未实现。不同版本之间的自动升级和 macOS 0.2.1 仍未验收。

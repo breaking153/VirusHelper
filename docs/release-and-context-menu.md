@@ -59,3 +59,7 @@ cargo run -p windows-shell --example verify_registration -- 'C:\absolute\test.tx
 每次升级除三个主版本和锁文件外，还需将 `src-tauri/tauri.windows.conf.json` 的资源目的名改为对应版本；构建钩子和发布版本检查均校验此对应关系，遗漏时中止构建。
 
 参考源码：[OpenHashTab 安装注册](https://github.com/liudonghua123/open-hashtab/blob/main/Setup/Package.wxs)。
+
+### 从 Codex 桌面版执行本机安装时
+
+打包运行环境可能重定向 AppData 文件和注册表可见范围：从 Codex 终端启动的安装器及伴随验收进程通过，不代表外部文件管理器能看到处理程序。本机正式验收时通过真实文件管理器双击安装包完成安装向导，选择 `C:\Users\15313\Apps\VirusHelper`，并在 Directory Opus 中实际验证右键启动及属性页自动 MD5 / SHA-256。手动注册脚本应在用户正常终端中执行；不要仅依赖 Codex 子进程的注册值或菜单枚举作为跨进程桌面验收。
