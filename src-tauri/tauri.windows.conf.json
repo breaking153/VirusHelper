@@ -1,6 +1,9 @@
 {
   "bundle": {
     "targets": ["nsis"],
+    "resources": {
+      "windows/generated/virushelper_shell.dll": "virushelper_shell-0.2.1.dll"
+    },
     "windows": {
       "nsis": {
         "languages": ["SimpChinese", "English"],

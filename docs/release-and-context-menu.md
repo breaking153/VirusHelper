@@ -24,20 +24,38 @@
 
 macOS 包若未配置 Apple Developer 签名和公证，首次运行可能受到 Gatekeeper 限制。更新签名不替代系统应用签名。Windows ARM64 / Linux 暂无发布目标。
 
-## Windows 右键菜单
+## Windows Shell 扩展（0.2.1 起）
 
-安装包为当前用户注册文件和文件夹右键菜单“使用 VirusHelper 计算哈希”，更新时将菜单指向安装目录中的新程序，卸载时删除菜单。Windows 11 的经典菜单入口可能位于“显示更多选项”。每次选择一个文件或文件夹，启动新窗口并自动计算 MD5。
+参考 OpenHashTab 的 `Setup/Package.wxs`，改为原生 Rust COM DLL：在 `AllFilesystemObjects\shellex` 下注册 `ContextMenuHandlers` 和 `PropertySheetHandlers`。文件/文件夹经典右键菜单“使用 VirusHelper 计算哈希”一次将全部选择交给主程序；文件属性中新增“VirusHelper 哈希”页，默认 MD5，切换算法自动重算，支持目录递归。属性页可打开完整程序使用 VT 和导出功能。
 
-无需运行安装包也可手动注册稳定位置的程序：
+Windows 11 新版第一层菜单需要 `IExplorerCommand` 和应用包身份；本实现与 OpenHashTab 一样使用经典接口，入口在“显示更多选项”及“属性”，不声称新版第一层支持。
+
+构建时会生成独立的 `windows-shell` DLL，并作为 `virushelper_shell-<版本>.dll` 随 NSIS 安装包分发。属性页异步计算前固定该 DLL 到宿主进程生命周期，避免线程返回到已卸载模块；版本化文件名让后续版本可独立安装。卸载后已经加载的 DLL 可能需要关闭对应资源管理器窗口或重新登录后才能删除；脚本不强制重启 Explorer。没有在 Explorer 内加载 Tauri Webview、VT Key 或发起网络请求。
+
+无需运行完整安装包也可在当前用户下注册：先将生产 exe 和 DLL 放在同一稳定目录，再运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/register-context-menu.ps1 -ExecutablePath 'C:\path\virus-helper.exe'
+powershell -ExecutionPolicy Bypass -File scripts/register-context-menu.ps1 -ExecutablePath 'C:\path\virus-helper.exe' -ShellExtensionPath 'C:\path\virushelper_shell-0.2.1.dll'
 ```
 
-注册位置仅为 `HKCU\Software\Classes\*\shell\VirusHelper.Hash` 和 `HKCU\Software\Classes\Directory\shell\VirusHelper.Hash`，不需要管理员权限。命令直接调用 exe，路径使用双引号，不经过 cmd 或 PowerShell。手动移动 exe 后需要重新注册。
+位置为 64 位 `HKCU\Software\Classes\CLSID\{6F5D6C28-415B-48EE-B3E8-BAAD03A18D41}\InprocServer32`（`ThreadingModel=Apartment`），以及 `AllFilesystemObjects\shellex` 的两种处理程序分类。不需要管理员权限。注册、更新和卸载均发送 `SHCNE_ASSOCCHANGED` 通知；旧 `*\shell\VirusHelper.Hash` / `Directory\shell\VirusHelper.Hash` 菜单被清理，避免重复。
 
-删除菜单：
+删除注册（只删除 VirusHelper 自己的键）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/unregister-context-menu.ps1
 ```
+
+只支持 64 位 Windows 宿主；32 位文件管理器需要额外的 x86 DLL，本轮未提供。一次启动使用 Windows 原生命令行传递选择路径，受到 32,767 UTF-16 字符总长度限制；超出限制时不会部分启动，可在主程序中选择大批量文件。主程序内部仍支持最多 100,000 文件。
+
+非交互验收（使用测试文件，不显示菜单、不操作用户窗口）：
+
+```powershell
+cargo run -p windows-shell --example verify_registration -- 'C:\absolute\test.txt'
+```
+
+该工具验证注册后的真实 COM 激活、文件选择初始化、菜单 ID、属性页创建/释放，并向实际文件系统菜单提供器请求组装菜单，确认包含 VirusHelper。它不能替代 Windows 11 第一层菜单或属性页视觉验收。
+
+每次升级除三个主版本和锁文件外，还需将 `src-tauri/tauri.windows.conf.json` 的资源目的名改为对应版本；构建钩子和发布版本检查均校验此对应关系，遗漏时中止构建。
+
+参考源码：[OpenHashTab 安装注册](https://github.com/liudonghua123/open-hashtab/blob/main/Setup/Package.wxs)。

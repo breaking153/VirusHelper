@@ -58,3 +58,22 @@ VT 测试通过本地 HTTP fixture 验证真实 GET 路径和 `x-apikey` 请求�
 本机为 Windows，没有执行 macOS 实机交互验证。macOS Intel 和 Apple Silicon 的原生测试、清单符号链接越界测试与其他质量检查已在对应 GitHub Actions runner 上通过；这不等同于 macOS 图形界面、钥匙串和实际升级过程的实机验收。
 
 本机已验证原生任务命令与 Channel 的序列化、互斥、取消和清理，以及右键 verb 的进程启动和签名校验。完整安装/卸载及跨版本升级未在本机执行，遵循用户先不安装的要求。没有真实 VT API Key 的线上接口验证。
+
+## 2026-10-23 OpenHashTab 风格 Shell 注册修复（0.2.1）
+
+更正：此前的静态 verb 注册与 ShellExecute 启动验证，仅能证明注册值/进程参数，不能证明菜单实际显示；10 月 23 日用户报告及桌面检查确认旧入口没有出现在完整菜单。当前已将旧静态 verb 替换为独立 Rust COM DLL，采用 OpenHashTab 的 AllFilesystemObjects / ContextMenuHandlers / PropertySheetHandlers 注册方式。
+
+本次本机验证：
+
+- Rust 全工作区 52 项测试通过；包含 6 项新 Shell 测试，覆盖真实 CF_HDROP 中文多选、命令 ID、空选择、页面接受/拒绝，以及测试自建隐藏原生窗口中自动 MD5、切换 SHA-256 后更新结果。
+- Clippy 全工作区所有目标（warnings denied）、Rust 格式检查通过。前端 33 项和 Node 发布脚本 5 项测试通过；Prettier、TypeScript/Vite 生产构建、git diff --check 通过。
+- Windows 0.2.1 x64 NSIS 安装包与 Tauri 更新签名构建成功，3.55 MiB；生成的 installer.nsi 确认安装 virushelper_shell-0.2.1.dll 并按相同 VERSION 注册。
+- 当前用户稳定目录放入新版 exe 和 DLL，未运行完整安装程序。手动注册、卸载清理、重新注册通过，卸载检查确认自己的 CLSID 与两类 handler 键均删除。
+- 独立进程使用 CoCreateInstance 成功加载已注册生产 DLL，初始化两个含中文/空格/& 的实际文件路径，生成正确命令 ID，并成功创建/释放属性页。
+- 使用 SHBindToParent 获取真实文件系统文件夹，调用其 IContextMenu 组装未显示的测试菜单，确认包含“使用 VirusHelper 计算哈希”；.txt 多选、无扩展名文件和文件夹分别通过。直接对 Desktop 文件夹传入完整 PIDL 不会组装出同等菜单，验收工具已改为实际父文件夹与相对 PIDL。
+- 调用已注册 IContextMenu::InvokeCommand 成功启动稳定目录中的 Tauri 程序；进程元数据确认两个测试路径完整传入同一窗口。未使用 cmd/PowerShell 作为文件启动中间层。
+- 独立代码复审通过；复审指出的 Win32 同步重入导致重叠 &mut 问题已改为 Rc/RefCell，并补上隐藏窗口交互测试。构建与发布增加版本化 DLL 文件名校验及回归测试。
+
+本次安装包 SHA-256：08fc887ed4d53f5b83d02f50c8e48a1e80e24d45284d292c85825245993c5f55。
+
+限制：本次没有接管桌面验证实际菜单截图或属性页视觉布局；上述菜单证据来自真实文件系统菜单提供器的未显示菜单。Windows 11 新版第一层菜单没有实现，经典菜单和属性页才是本轮入口。完整安装/卸载、真实跨版本升级仍未执行。macOS 本轮只有条件编译隔离，尚未获得 0.2.1 CI/实机结果。发布 GitHub 的本机网络返回 EOF，0.2.1 尚未公开发布；不能用已有 0.2.0 CI 结果作为本次验证。

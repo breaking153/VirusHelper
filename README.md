@@ -123,6 +123,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 ```text
 crates/hash-core/       算法、流式读取、目录批次、清单解析与安全导出
 crates/vt-client/       VT 会话 Key、限流、缓存、HTTP 与报告解析
+crates/windows-shell/  Windows 原生 COM 右键处理程序与哈希属性页
 src-tauri/             系统凭据持久化、原生对话框、任务状态与取消、Tauri IPC、安装包配置
 src/                   React 界面、类型化桥接、状态与交互测试
 .github/workflows/     Windows/macOS 检查与构建

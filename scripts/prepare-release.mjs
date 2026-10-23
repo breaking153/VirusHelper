@@ -30,6 +30,14 @@ export function verifyVersions(tag, versions) {
   return tag.slice(1);
 }
 
+export function verifyWindowsShellResource(version, resources) {
+  if (
+    resources?.['windows/generated/virushelper_shell.dll'] !== `virushelper_shell-${version}.dll`
+  ) {
+    throw new Error('Windows Shell DLL resource filename must match the release version');
+  }
+}
+
 export function shouldMakeLatest(tag, currentTag) {
   const parse = (value) => {
     if (!/^v\d+\.\d+\.\d+$/.test(value)) throw new Error(`Invalid release version: ${value}`);
@@ -118,6 +126,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const pkg = JSON.parse(await readFile('package.json', 'utf8'));
     const config = JSON.parse(await readFile('src-tauri/tauri.conf.json', 'utf8'));
     const cargo = await readFile('Cargo.toml', 'utf8');
+    const windows = JSON.parse(await readFile('src-tauri/tauri.windows.conf.json', 'utf8'));
+    verifyWindowsShellResource(config.version, windows.bundle?.resources);
     verifyVersions(tag, [
       pkg.version,
       config.version,

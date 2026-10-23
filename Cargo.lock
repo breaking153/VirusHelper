@@ -1597,7 +1597,7 @@ dependencies = [
 
 [[package]]
 name = "hash-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "blake3",
  "crc32fast",
@@ -5001,7 +5001,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "virus-helper"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "hash-core",
  "keyring",
@@ -5041,7 +5041,7 @@ dependencies = [
 
 [[package]]
 name = "vt-client"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -5505,6 +5505,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
 dependencies = [
  "windows-link",
+]
+
+[[package]]
+name = "windows-shell"
+version = "0.2.1"
+dependencies = [
+ "hash-core",
+ "tempfile",
+ "windows",
+ "windows-core",
 ]
 
 [[package]]

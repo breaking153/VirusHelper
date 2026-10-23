@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prepareRelease, verifyVersions, shouldMakeLatest } from './prepare-release.mjs';
+import {
+  prepareRelease,
+  verifyVersions,
+  shouldMakeLatest,
+  verifyWindowsShellResource,
+} from './prepare-release.mjs';
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'virushelper-release-'));
@@ -88,4 +93,18 @@ test('a slower older build cannot replace a newer Latest release', () => {
   assert.equal(shouldMakeLatest('v0.2.0', ''), true);
   assert.equal(shouldMakeLatest('v0.2.0', 'v0.2.0'), false);
   assert.throws(() => shouldMakeLatest('v0.2.0', 'unknown'), /version/i);
+});
+
+test('rejects an upgrade whose installer would register a missing versioned Shell DLL', () => {
+  assert.throws(
+    () =>
+      verifyWindowsShellResource('0.2.2', {
+        'windows/generated/virushelper_shell.dll': 'virushelper_shell-0.2.1.dll',
+      }),
+    /DLL resource filename/,
+  );
+  assert.throws(() => verifyWindowsShellResource('0.2.2', undefined), /DLL resource filename/);
+  verifyWindowsShellResource('0.2.2', {
+    'windows/generated/virushelper_shell.dll': 'virushelper_shell-0.2.2.dll',
+  });
 });
