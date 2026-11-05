@@ -35,7 +35,7 @@ Windows 11 新版第一层菜单需要 `IExplorerCommand` 和应用包身份；�
 无需运行完整安装包也可在当前用户下注册：先将生产 exe 和 DLL 放在同一稳定目录，再运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/register-context-menu.ps1 -ExecutablePath 'C:\path\virus-helper.exe' -ShellExtensionPath 'C:\path\virushelper_shell-0.3.1.dll'
+powershell -ExecutionPolicy Bypass -File scripts/register-context-menu.ps1 -ExecutablePath 'C:\path\virus-helper.exe' -ShellExtensionPath 'C:\path\virushelper_shell-0.3.2.dll'
 ```
 
 位置为 64 位 `HKCU\Software\Classes\CLSID\{6F5D6C28-415B-48EE-B3E8-BAAD03A18D41}\InprocServer32`（`ThreadingModel=Apartment`），以及 `AllFilesystemObjects\shellex` 的两种处理程序分类。不需要管理员权限。注册、更新和卸载均发送 `SHCNE_ASSOCCHANGED` 通知；旧 `*\shell\VirusHelper.Hash` / `Directory\shell\VirusHelper.Hash` 菜单被清理，避免重复。

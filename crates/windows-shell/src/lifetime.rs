@@ -17,7 +17,18 @@ pub fn lock_server(lock: bool) {
     if lock {
         LOCKS.fetch_add(1, Ordering::AcqRel);
     } else {
-        let _ = LOCKS.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1));
+        let mut current = LOCKS.load(Ordering::Acquire);
+        while current > 0 {
+            match LOCKS.compare_exchange_weak(
+                current,
+                current - 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(value) => current = value,
+            }
+        }
     }
 }
 pub fn can_unload() -> bool {

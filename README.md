@@ -27,7 +27,7 @@ MD5 / SHA-1 用于兼容旧清单；CRC32 / xxHash64 用于非密码学校验。
 ## 开发环境
 
 - Node.js **24 LTS** 和 Bun **1.4.4**（仅安装锁定的前端依赖；打包由 Cargo 执行）。
-- Rust **stable**（本机验证版本为 1.97.1）。
+- Rust **stable**（本机验证版本为 1.99.1）。
 - Windows：Microsoft C++ Build Tools / Visual Studio 的“使用 C++ 的桌面开发”、WebView2。
 - macOS：Xcode Command Line Tools：`xcode-select --install`。
 

@@ -1597,7 +1597,7 @@ dependencies = [
 
 [[package]]
 name = "hash-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "blake3",
  "crc32fast",
@@ -5002,7 +5002,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "virus-helper"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "hash-core",
  "keyring",
@@ -5042,7 +5042,7 @@ dependencies = [
 
 [[package]]
 name = "vt-client"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -5510,7 +5510,7 @@ dependencies = [
 
 [[package]]
 name = "windows-shell"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "hash-core",
  "tempfile",
