@@ -2,6 +2,8 @@
 $classId = '{6F5D6C28-415B-48EE-B3E8-BAAD03A18D41}'
 $registry = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryView]::Registry64)
 try {
+    $approved = $registry.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved', $true)
+    if ($approved) { try { $approved.DeleteValue($classId, $false) } finally { $approved.Dispose() } }
     foreach ($category in @('ContextMenuHandlers', 'PropertySheetHandlers')) {
         $registry.DeleteSubKeyTree("Software\Classes\AllFilesystemObjects\shellex\$category\$classId", $false)
     }

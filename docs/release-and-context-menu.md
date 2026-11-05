@@ -35,7 +35,7 @@ Windows 11 新版第一层菜单需要 `IExplorerCommand` 和应用包身份；�
 无需运行完整安装包也可在当前用户下注册：先将生产 exe 和 DLL 放在同一稳定目录，再运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/register-context-menu.ps1 -ExecutablePath 'C:\path\virus-helper.exe' -ShellExtensionPath 'C:\path\virushelper_shell-0.3.2.dll'
+powershell -ExecutionPolicy Bypass -File scripts/register-context-menu.ps1 -ExecutablePath 'C:\path\virus-helper.exe' -ShellExtensionPath 'C:\path\virushelper_shell-0.3.3.dll'
 ```
 
 位置为 64 位 `HKCU\Software\Classes\CLSID\{6F5D6C28-415B-48EE-B3E8-BAAD03A18D41}\InprocServer32`（`ThreadingModel=Apartment`），以及 `AllFilesystemObjects\shellex` 的两种处理程序分类。不需要管理员权限。注册、更新和卸载均发送 `SHCNE_ASSOCCHANGED` 通知；旧 `*\shell\VirusHelper.Hash` / `Directory\shell\VirusHelper.Hash` 菜单被清理，避免重复。
@@ -87,3 +87,5 @@ Rust 使用 `xtask/templates/` 内嵌的原生 plist 模板生成 Automator 服�
 发布构建使用 Bun 从已提交锁文件安装前端依赖，检查和前端编译直接调用 Node；Windows 与 macOS 打包入口均为 Cargo xtask，不调用 npm。Windows 在原生测试前先执行 `cargo xtask prepare-windows-shell`，生成 Tauri 资源声明所需的 COM DLL，正式打包使用 `cargo xtask package-windows`。
 
 Windows 发布任务在隔离 runner 中实际运行 NSIS 安装器，验证安装目录中的版本化 DLL、64 位 HKCU 的 COM/菜单/属性页注册，并通过 `verify_registration` 验证真实 COM 激活和文件系统菜单提供器；随后运行卸载程序并检查注册项已清理。这不等同于 Windows 11 新版第一层菜单或交互式安装向导的视觉验收。macOS 的两个架构均发布 DMG、独立 PKG 和带更新签名的应用归档，汇总测试拒绝缺失 PKG 的 Release。
+
+Windows 安装器还写入当前用户的 `Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved` 中本程序 CLSID 的单个值，以支持仅允许当前用户或已登记扩展的环境；卸载只删除该值，不更改系统策略或其他扩展。参考 [Microsoft Shell 扩展策略](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-windowsexplorer#enforceshellextensionsecurity)。

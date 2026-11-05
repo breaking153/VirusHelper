@@ -78,6 +78,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.target }}
+          cache-on-failure: true
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: node node_modules/prettier/bin/prettier.cjs --check src vite.config.ts index.html "*.json" ".github/workflows/*.yml" "src-tauri/*.json" "src-tauri/capabilities/*.json"
       - run: node node_modules/vitest/vitest.mjs run --testTimeout=20000
@@ -134,6 +135,7 @@ jobs:
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
           ./scripts/verify-windows-installer.ps1 -Installer $installers[0].FullName -Version $version
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
           name: virushelper-release-${{ matrix.name }}
           path: |

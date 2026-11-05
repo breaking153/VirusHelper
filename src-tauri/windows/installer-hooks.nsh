@@ -3,6 +3,8 @@
 
 !macro NSIS_HOOK_POSTINSTALL
   SetRegView 64
+  ; Register only our per-user extension; do not alter machine Shell policy.
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved" "${VIRUSHELPER_SHELL_CLSID}" "VirusHelper Shell Extension"
   ; Versioned DLLs avoid overwriting a module held by Explorer during updates.
   WriteRegStr HKCU "Software\Classes\CLSID\${VIRUSHELPER_SHELL_CLSID}" "" "VirusHelper Shell Extension"
   WriteRegStr HKCU "Software\Classes\CLSID\${VIRUSHELPER_SHELL_CLSID}\InprocServer32" "" "$INSTDIR\virushelper_shell-${VERSION}.dll"
@@ -16,6 +18,7 @@
 
 !macro NSIS_HOOK_POSTUNINSTALL
   SetRegView 64
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved" "${VIRUSHELPER_SHELL_CLSID}"
   DeleteRegKey HKCU "Software\Classes\AllFilesystemObjects\shellex\ContextMenuHandlers\${VIRUSHELPER_SHELL_CLSID}"
   DeleteRegKey HKCU "Software\Classes\AllFilesystemObjects\shellex\PropertySheetHandlers\${VIRUSHELPER_SHELL_CLSID}"
   DeleteRegKey HKCU "Software\Classes\CLSID\${VIRUSHELPER_SHELL_CLSID}"

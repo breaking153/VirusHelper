@@ -71,6 +71,7 @@ fn main() -> windows::core::Result<()> {
             let mut name = [0u16; 512];
             let length = GetMenuStringW(menu, index as u32, Some(&mut name), MF_BYPOSITION);
             let name = String::from_utf16_lossy(&name[..length as usize]);
+            println!("Explorer menu item {index}: {name}");
             if name.contains("VirusHelper") {
                 found = true;
             }

@@ -40,6 +40,19 @@ try {
         try { if ($key.GetValue('') -ne $classId) { throw 'Incorrect Shell handler CLSID.' } }
         finally { $key.Dispose() }
     }
+    $approvedPath = 'Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved'
+    $approved = $registry.OpenSubKey($approvedPath)
+    if (-not $approved) { throw 'Installer did not register the per-user Approved entry.' }
+    try { if ($approved.GetValue($classId) -ne 'VirusHelper Shell Extension') { throw 'Installer did not approve its own per-user Shell extension.' } }
+    finally { $approved.Dispose() }
+    Write-Output "Windows version: $([Environment]::OSVersion.VersionString); interactive: $([Environment]::UserInteractive); session: $([Diagnostics.Process]::GetCurrentProcess().SessionId)"
+    foreach ($hive in @([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryHive]::LocalMachine)) {
+        $policyRoot = [Microsoft.Win32.RegistryKey]::OpenBaseKey($hive, [Microsoft.Win32.RegistryView]::Registry64)
+        try {
+            $policy = $policyRoot.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Policies\Explorer')
+            if ($policy) { try { Write-Output "$hive EnforceShellExtensionSecurity=$($policy.GetValue('EnforceShellExtensionSecurity'))" } finally { $policy.Dispose() } }
+        } finally { $policyRoot.Dispose() }
+    }
     $first = Join-Path $work '测试 one & sample.txt'
     $second = Join-Path $work '测试 two.txt'
     [IO.File]::WriteAllBytes($first, [Text.Encoding]::UTF8.GetBytes('abc'))
@@ -56,6 +69,8 @@ try {
                 $key = $registry.OpenSubKey($path)
                 if ($key) { $key.Dispose(); throw "Uninstaller left registration behind: $path" }
             }
+            $approved = $registry.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved')
+            if ($approved) { try { if ($null -ne $approved.GetValue($classId)) { throw 'Uninstaller left its Approved entry behind.' } } finally { $approved.Dispose() } }
             Write-Output 'Uninstaller removed the VirusHelper Shell registrations: PASS'
         }
     } finally { $registry.Dispose() }

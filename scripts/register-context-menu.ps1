@@ -25,6 +25,9 @@ try {
         try { $key.SetValue('', $entries[$path], [Microsoft.Win32.RegistryValueKind]::String) }
         finally { $key.Dispose() }
     }
+    $approved = $registry.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved')
+    try { $approved.SetValue($classId, 'VirusHelper Shell Extension', [Microsoft.Win32.RegistryValueKind]::String) }
+    finally { $approved.Dispose() }
     $server = $registry.OpenSubKey("Software\Classes\CLSID\$classId\InprocServer32", $true)
     try { $server.SetValue('ThreadingModel', 'Apartment') }
     finally { $server.Dispose() }
