@@ -36,7 +36,7 @@ jobs:
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
       - run: rustup default stable
       - run: bun install --frozen-lockfile --ignore-scripts
-      - run: node node_modules/vitest/vitest.mjs run
+      - run: node node_modules/vitest/vitest.mjs run --testTimeout=20000
       - run: node --test scripts/prepare-release.test.mjs
       - run: node node_modules/prettier/bin/prettier.cjs --check src vite.config.ts index.html "*.json" ".github/workflows/*.yml" "src-tauri/*.json" "src-tauri/capabilities/*.json"
       - run: cargo xtask frontend

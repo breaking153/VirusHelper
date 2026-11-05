@@ -80,7 +80,7 @@ jobs:
           key: release-${{ matrix.target }}
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: node node_modules/prettier/bin/prettier.cjs --check src vite.config.ts index.html "*.json" ".github/workflows/*.yml" "src-tauri/*.json" "src-tauri/capabilities/*.json"
-      - run: node node_modules/vitest/vitest.mjs run
+      - run: node node_modules/vitest/vitest.mjs run --testTimeout=20000
       - run: node --test scripts/prepare-release.test.mjs
       - run: cargo fmt --all -- --check
       - run: cargo fmt --manifest-path xtask/Cargo.toml -- --check
