@@ -96,6 +96,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Security.Principal;
 public static class VirusHelperNormalProbe {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     struct Startup {
@@ -121,18 +122,44 @@ public static class VirusHelperNormalProbe {
     static extern bool SetTokenInformation(IntPtr token, int kind, IntPtr info, int size);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern bool CreateProcessWithTokenW(IntPtr token, uint logonFlags, string application, StringBuilder command, uint flags, IntPtr environment, string directory, ref Startup startup, out ProcessInfo process);
+    [DllImport("user32.dll")] static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
+    [DllImport("advapi32.dll", SetLastError = true)] static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+    [DllImport("advapi32.dll", SetLastError = true)] static extern bool DuplicateTokenEx(IntPtr input, uint access, IntPtr attributes, int impersonation, int kind, out IntPtr token);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr handle);
     [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr handle, uint timeout);
     [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr handle, out uint code);
     [DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr handle, uint code);
     static void Require(bool ok, string operation) { if (!ok) throw new Win32Exception(Marshal.GetLastWin32Error(), operation); }
+    static bool TryExplorerToken(out IntPtr token) {
+        token = IntPtr.Zero;
+        IntPtr window = GetShellWindow();
+        if (window == IntPtr.Zero) return false;
+        uint id;
+        GetWindowThreadProcessId(window, out id);
+        IntPtr process = OpenProcess(0x1000, false, id), source = IntPtr.Zero;
+        if (process == IntPtr.Zero) return false;
+        try {
+            if (!OpenProcessToken(process, 0xA, out source)) return false;
+            using (var identity = new WindowsIdentity(source)) {
+                if (identity.User.Value != WindowsIdentity.GetCurrent().User.Value || new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)) return false;
+            }
+            return DuplicateTokenEx(source, 0x02000000, IntPtr.Zero, 2, 1, out token);
+        } finally { if (source != IntPtr.Zero) CloseHandle(source); CloseHandle(process); }
+    }
     public static int Run(string application, string script, string directory) {
         IntPtr level = IntPtr.Zero, token = IntPtr.Zero, sid = IntPtr.Zero, label = IntPtr.Zero;
         ProcessInfo process = new ProcessInfo();
         try {
-            Require(SaferCreateLevel(2, 0x20000, 1, out level, IntPtr.Zero), "Create normal-user security level");
-            Require(SaferComputeTokenFromLevel(level, IntPtr.Zero, out token, 0, IntPtr.Zero), "Create restricted user token");
+            if (TryExplorerToken(out token)) {
+                Console.WriteLine("Installer probe uses the same user's Explorer desktop token.");
+            } else {
+                Require(SaferCreateLevel(2, 0x20000, 1, out level, IntPtr.Zero), "Create normal-user security level");
+                Require(SaferComputeTokenFromLevel(level, IntPtr.Zero, out token, 0, IntPtr.Zero), "Create restricted user token");
+                Console.WriteLine("Installer probe uses a restricted token of the same user.");
+            }
             Require(ConvertStringSidToSid("S-1-16-8192", out sid), "Create medium integrity SID");
             int size = Marshal.SizeOf(typeof(Label)) + (int)GetLengthSid(sid);
             label = Marshal.AllocHGlobal(size);
