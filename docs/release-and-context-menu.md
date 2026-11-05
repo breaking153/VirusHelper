@@ -90,4 +90,4 @@ Windows 发布任务在隔离 runner 中实际运行 NSIS 安装器，验证安�
 
 Windows 安装器还写入当前用户的 `Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved` 中本程序 CLSID 的单个值，以支持仅允许当前用户或已登记扩展的环境；卸载只删除该值，不更改系统策略或其他扩展。参考 [Microsoft Shell 扩展策略](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-windowsexplorer#enforceshellextensionsecurity)。
 
-发布验证工具与应用源码分开取版本：应用始终从已校验的发布标签构建，安装器验证脚本取工作流提交中的版本。CI 在同一用户的普通权限、中等完整性子进程中检查当前用户的右键菜单，避免管理员进程的 Shell 发现行为影响结果；仍要求真实菜单提供器枚举到 VirusHelper，且检查安装、COM 激活、属性页与卸载清理，不以仅存在注册表值代替菜单验证。
+发布验证工具与应用源码分开取版本：应用始终从已校验的发布标签构建，安装器验证脚本取工作流提交中的版本。CI 创建并在结束时删除隔离的普通测试账户，在该账户中完成完整安装、检查当前用户的右键菜单及卸载，避免内置管理员身份影响 Shell 发现行为；仍要求真实菜单提供器枚举到 VirusHelper，且检查安装、COM 激活、属性页与卸载清理，不以仅存在注册表值代替菜单验证。

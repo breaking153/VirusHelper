@@ -131,9 +131,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $encoded = gh api 'repos/${{ github.repository }}/contents/scripts/verify-windows-installer.ps1?ref=${{ github.sha }}' --jq .content
-          if ($LASTEXITCODE -ne 0) { throw 'Could not load installer verification tool.' }
-          [IO.File]::WriteAllBytes((Join-Path $PWD 'scripts/verify-windows-installer.ps1'), [Convert]::FromBase64String(($encoded -join '')))
+          foreach ($file in @('verify-windows-installer.ps1', 'test-installed-windows-shell.ps1')) {
+            $encoded = gh api "repos/${{ github.repository }}/contents/scripts/$($file)?ref=${{ github.sha }}" --jq .content
+            if ($LASTEXITCODE -ne 0) { throw 'Could not load installer verification tool.' }
+            [IO.File]::WriteAllBytes((Join-Path $PWD "scripts/$file"), [Convert]::FromBase64String(($encoded -join '')))
+          }
       - name: Verify Windows installer and automatic Shell registration
         if: runner.os == 'Windows'
         shell: pwsh
