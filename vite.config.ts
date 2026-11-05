@@ -7,7 +7,7 @@ export default defineConfig({
   build: { target: ['es2021', 'safari15'] },
   server: { host: '127.0.0.1', port: 1420, strictPort: true },
   test: {
-    // Release assembly uses node:test and is run by the second half of npm test.
+    // Release assembly uses node:test and is checked separately from frontend tests.
     include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],

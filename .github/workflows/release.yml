@@ -46,14 +46,17 @@ jobs:
           - os: windows-latest
             name: Windows-x64
             target: x86_64-pc-windows-msvc
+            cli_sha256: 563cb2aef280c393688cebaff1a9fd4a2f6df4fdb9be2c665ff3c798a4ffe7c2
             bundles: nsis
           - os: macos-15
             name: macOS-arm64
             target: aarch64-apple-darwin
+            cli_sha256: 35e3b339bfb5f2061023bf5646dc969e5fa53b6fc4347daf467e7f6743692494
             bundles: app
           - os: macos-15-intel
             name: macOS-x64
             target: x86_64-apple-darwin
+            cli_sha256: 333987e244ef46152c107d3e922313fd09cfd8e43cd851512609c2264348fc9b
             bundles: app
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -72,6 +75,9 @@ jobs:
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target ${{ matrix.target }}
       - run: rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: node node_modules/prettier/bin/prettier.cjs --check src vite.config.ts index.html "*.json" ".github/workflows/*.yml" "src-tauri/*.json" "src-tauri/capabilities/*.json"
       - run: node node_modules/vitest/vitest.mjs run
@@ -86,8 +92,26 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: bun audit --audit-level=high
-      - name: Install Rust Tauri CLI
-        run: cargo install tauri-cli --version '~2.12' --locked
+      - name: Install verified official Rust Tauri CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'tauri-cli'
+          New-Item -ItemType Directory -Force -Path $tools | Out-Null
+          $asset = 'cargo-tauri-${{ matrix.target }}.zip'
+          gh release download tauri-cli-v2.12.3 --repo tauri-apps/tauri --pattern $asset --dir $tools
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the official Tauri CLI.' }
+          $archive = Join-Path $tools $asset
+          if ((Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() -ne '${{ matrix.cli_sha256 }}') { throw 'Tauri CLI SHA-256 mismatch.' }
+          Expand-Archive -Path $archive -DestinationPath (Join-Path $tools 'unpacked')
+          $binary = if ('${{ runner.os }}' -eq 'Windows') { 'cargo-tauri.exe' } else { 'cargo-tauri' }
+          $bin = Join-Path $tools 'bin'
+          New-Item -ItemType Directory -Force -Path $bin | Out-Null
+          Move-Item (Join-Path $tools "unpacked/$binary") (Join-Path $bin $binary)
+          if ('${{ runner.os }}' -ne 'Windows') { chmod +x (Join-Path $bin $binary) }
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & (Join-Path $bin $binary) --version
       - name: Build and sign application and installer with Cargo
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

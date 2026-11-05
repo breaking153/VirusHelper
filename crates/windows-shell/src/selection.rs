@@ -119,6 +119,15 @@ mod tests {
             std::fs::write(path, b"abc").unwrap();
         }
         let selection = fixture::Selection::new(&paths);
-        assert_eq!(read(selection.data.as_ref().unwrap()).unwrap(), paths);
+        let selected = read(selection.data.as_ref().unwrap()).unwrap();
+        // Shell resolves 8.3 aliases (e.g. RUNNER~1) to long names. Compare
+        // filesystem identities while still checking Unicode names and order.
+        let canonical = |items: &[std::path::PathBuf]| {
+            items
+                .iter()
+                .map(|path| std::fs::canonicalize(path).unwrap())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(canonical(&selected), canonical(&paths));
     }
 }

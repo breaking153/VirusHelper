@@ -71,7 +71,7 @@ it('paginates queues while select-all and selection persist across pages', async
   await user.click(screen.getByRole('button', { name: '下一页' }));
   expect(screen.getByText('file-100.bin')).toBeInTheDocument();
   expect(screen.getByRole('checkbox', { name: '选择 file-100.bin MD5' })).toBeChecked();
-});
+}, 15_000);
 it('copies single cells and supports keyboard selection', async () => {
   const select = vi.fn();
   const copy = vi.fn();

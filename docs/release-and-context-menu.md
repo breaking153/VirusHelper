@@ -35,7 +35,7 @@ Windows 11 新版第一层菜单需要 `IExplorerCommand` 和应用包身份；�
 无需运行完整安装包也可在当前用户下注册：先将生产 exe 和 DLL 放在同一稳定目录，再运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/register-context-menu.ps1 -ExecutablePath 'C:\path\virus-helper.exe' -ShellExtensionPath 'C:\path\virushelper_shell-0.3.0.dll'
+powershell -ExecutionPolicy Bypass -File scripts/register-context-menu.ps1 -ExecutablePath 'C:\path\virus-helper.exe' -ShellExtensionPath 'C:\path\virushelper_shell-0.3.1.dll'
 ```
 
 位置为 64 位 `HKCU\Software\Classes\CLSID\{6F5D6C28-415B-48EE-B3E8-BAAD03A18D41}\InprocServer32`（`ThreadingModel=Apartment`），以及 `AllFilesystemObjects\shellex` 的两种处理程序分类。不需要管理员权限。注册、更新和卸载均发送 `SHCNE_ASSOCCHANGED` 通知；旧 `*\shell\VirusHelper.Hash` / `Directory\shell\VirusHelper.Hash` 菜单被清理，避免重复。
@@ -82,7 +82,7 @@ Rust 使用 `xtask/templates/` 内嵌的原生 plist 模板生成 Automator 服�
 
 打包运行环境可能重定向 AppData 文件和注册表可见范围：从 Codex 终端启动的安装器及伴随验收进程通过，不代表外部文件管理器能看到处理程序。本机正式验收时通过真实文件管理器双击安装包完成安装向导，选择 `C:\Users\15313\Apps\VirusHelper`，并在 Directory Opus 中实际验证右键启动及属性页自动 MD5 / SHA-256。手动注册脚本应在用户正常终端中执行；不要仅依赖 Codex 子进程的注册值或菜单枚举作为跨进程桌面验收。
 
-## 0.3.0 发布检查
+## 0.3.x 发布检查
 
 发布构建使用 Bun 从已提交锁文件安装前端依赖，检查和前端编译直接调用 Node；Windows 与 macOS 打包入口均为 Cargo xtask，不调用 npm。Windows 在原生测试前先执行 `cargo xtask prepare-windows-shell`，生成 Tauri 资源声明所需的 COM DLL，正式打包使用 `cargo xtask package-windows`。
 
