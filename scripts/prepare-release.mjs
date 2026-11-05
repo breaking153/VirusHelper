@@ -88,10 +88,10 @@ export async function prepareRelease({ artifactRoot, output, repository, tag }) 
     };
     copies.push([bundle, name], [bundle + '.sig', name + '.sig']);
     if (target.key.startsWith('darwin')) {
-      copies.push([
-        exactlyOne(files, '.dmg', target.name),
-        `VirusHelper_${version}_${target.name}.dmg`,
-      ]);
+      copies.push(
+        [exactlyOne(files, '.dmg', target.name), `VirusHelper_${version}_${target.name}.dmg`],
+        [exactlyOne(files, '.pkg', target.name), `VirusHelper_${version}_${target.name}.pkg`],
+      );
     }
   }
   // Validate every architecture before writing a manifest that could be published.

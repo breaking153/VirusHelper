@@ -1,6 +1,7 @@
 mod algorithm;
 mod batch;
 mod export;
+mod file_format;
 mod hashing;
 mod manifest;
 

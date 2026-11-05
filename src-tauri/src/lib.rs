@@ -29,6 +29,8 @@ pub fn run() {
             commands::clear_results,
             virustotal::get_vt_settings,
             virustotal::set_vt_api_key,
+            virustotal::set_vt_proxy,
+            virustotal::test_vt_connection,
             virustotal::lookup_vt,
             virustotal::open_vt_page,
         ])

@@ -149,3 +149,49 @@ fn a_manifest_directory_entry_is_an_error_instead_of_unchecked_children() {
     );
     assert_eq!(summary.results[0].status, FileStatus::Error);
 }
+
+#[test]
+fn detects_content_formats_for_renamed_and_extensionless_files_and_serializes_them() {
+    let root = tempfile::tempdir().unwrap();
+    let png = b"\x89PNG\r\n\x1a\n";
+    let files: [(&str, &[u8], &str); 5] = [
+        ("picture.txt", png, "PNG"),
+        ("no-extension", png, "PNG"),
+        ("text.exe", "文件内容是文本\n".as_bytes(), "UTF-8 文本"),
+        ("unknown.png", &[0, 1, 2, 3, 0xff], "未知格式"),
+        ("empty.pdf", b"", "空文件"),
+    ];
+    for (name, bytes, _) in &files {
+        std::fs::write(root.path().join(name), bytes).unwrap();
+    }
+    let mut streamed = Vec::new();
+    let summary = run_batch(
+        request(vec![root.path().into()]),
+        &AtomicBool::new(false),
+        |event| {
+            if let JobEvent::File { result } = event {
+                streamed.push(serde_json::to_value(result).unwrap());
+            }
+        },
+    )
+    .unwrap();
+    assert_eq!((summary.completed, summary.errors), (5, 0));
+    for (name, _, expected) in files {
+        let result = summary.results.iter().find(|r| r.name == name).unwrap();
+        assert_eq!(result.file_format.as_deref(), Some(expected));
+        let event = streamed.iter().find(|r| r["name"] == name).unwrap();
+        assert_eq!(event["fileFormat"], expected);
+        assert!(!result.hashes[&Sha256].is_empty());
+    }
+    let renamed = summary
+        .results
+        .iter()
+        .find(|r| r.name == "picture.txt")
+        .unwrap();
+    let bare = summary
+        .results
+        .iter()
+        .find(|r| r.name == "no-extension")
+        .unwrap();
+    assert_eq!(renamed.hashes, bare.hashes);
+}

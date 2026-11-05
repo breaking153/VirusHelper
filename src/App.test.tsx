@@ -21,6 +21,8 @@ vi.mock('./native', () => ({
     listenDrop: vi.fn(),
     vtSettings: vi.fn(),
     configureVt: vi.fn(),
+    configureVtProxy: vi.fn(),
+    testVtConnection: vi.fn(),
     lookupVt: vi.fn(),
     openVtPage: vi.fn(),
   },
@@ -31,6 +33,7 @@ const file: FileResult = {
   name: 'abc.txt',
   size: 3,
   status: 'complete',
+  fileFormat: 'UTF-8 文本',
   error: null,
   checks: [],
   hashes: {
@@ -54,8 +57,8 @@ beforeEach(() => {
   vi.mocked(native.startupPaths).mockResolvedValue([]);
   vi.mocked(native.pickFiles).mockResolvedValue([file.path]);
   vi.mocked(native.clear).mockResolvedValue();
-  vi.mocked(native.vtSettings).mockResolvedValue({ configured: false });
-  vi.mocked(native.configureVt).mockResolvedValue({ configured: true });
+  vi.mocked(native.vtSettings).mockResolvedValue({ configured: false, proxy: null });
+  vi.mocked(native.configureVt).mockResolvedValue({ configured: true, proxy: null });
   vi.mocked(native.openVtPage).mockResolvedValue();
   vi.mocked(native.listenDrop).mockResolvedValue(() => {});
   vi.mocked(native.run).mockImplementation(
@@ -117,6 +120,9 @@ it('automatically calculates MD5 for selected files, compares pasted hashes and 
   expect(screen.getByText('哈希一致')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '复制哈希' }));
   expect(native.copy).toHaveBeenCalledWith('900150983cd24fb0d6963f7d28e17f72');
+  const feedback = await screen.findByText('已复制到剪贴板');
+  expect(feedback).toHaveClass('copy-toast');
+  expect(feedback.closest('.message')).toBeNull();
 });
 
 it('shows native errors and allows the user to retry', async () => {
@@ -179,6 +185,8 @@ it('saves the API key through the native bridge, clears the input, and queries o
     suspicious: 1,
     total: 70,
     lastAnalysisDate: 1720000000,
+    threatLabel: null,
+    threatCategories: [],
   });
   const user = userEvent.setup();
   render(<App />);
@@ -200,8 +208,8 @@ it('saves the API key through the native bridge, clears the input, and queries o
 });
 
 it('automatically uses a saved key on startup and clears the saved credential on request', async () => {
-  vi.mocked(native.vtSettings).mockResolvedValue({ configured: true });
-  vi.mocked(native.configureVt).mockResolvedValue({ configured: false });
+  vi.mocked(native.vtSettings).mockResolvedValue({ configured: true, proxy: null });
+  vi.mocked(native.configureVt).mockResolvedValue({ configured: false, proxy: null });
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole('button', { name: '选项' }));
@@ -228,7 +236,7 @@ it('shows storage failures without claiming that the key was saved', async () =>
 });
 
 it('prevents editing credentials until startup restoration has completed', async () => {
-  let finish: (settings: { configured: boolean }) => void = () => {};
+  let finish: (settings: { configured: boolean; proxy: string | null }) => void = () => {};
   vi.mocked(native.vtSettings).mockImplementation(
     () =>
       new Promise((resolve) => {
@@ -239,7 +247,7 @@ it('prevents editing credentials until startup restoration has completed', async
   render(<App />);
   await user.click(screen.getByRole('button', { name: '选项' }));
   expect(screen.getByLabelText('VT API Key')).toBeDisabled();
-  finish({ configured: true });
+  finish({ configured: true, proxy: null });
   await waitFor(() => expect(screen.getByLabelText('VT API Key')).toBeEnabled());
   expect(screen.getByText(/Key 已保存/)).toBeInTheDocument();
 });
@@ -247,7 +255,7 @@ it('prevents editing credentials until startup restoration has completed', async
 it('allows retrying automatic restoration after the credential store is unlocked', async () => {
   vi.mocked(native.vtSettings)
     .mockRejectedValueOnce({ code: 'credential-store', message: '系统凭据存储已锁定' })
-    .mockResolvedValueOnce({ configured: true });
+    .mockResolvedValueOnce({ configured: true, proxy: null });
   const user = userEvent.setup();
   render(<App />);
   expect(await screen.findByRole('alert')).toHaveTextContent('系统凭据存储已锁定');
@@ -264,7 +272,7 @@ it('distinguishes an absent report from quota errors and hides reports for anoth
     name: 'other.txt',
     hashes: { sha256: 'f'.repeat(64) },
   };
-  vi.mocked(native.vtSettings).mockResolvedValue({ configured: true });
+  vi.mocked(native.vtSettings).mockResolvedValue({ configured: true, proxy: null });
   vi.mocked(native.run).mockResolvedValue({
     ...done,
     total: 2,
@@ -279,6 +287,8 @@ it('distinguishes an absent report from quota errors and hides reports for anoth
       suspicious: 0,
       total: 0,
       lastAnalysisDate: null,
+      threatLabel: null,
+      threatCategories: [],
     })
     .mockRejectedValueOnce({
       code: 'rate-limited',
@@ -382,5 +392,184 @@ it('allows changing algorithms during computation and restarts only the latest s
   expect(native.run).toHaveBeenLastCalledWith(
     expect.objectContaining({ algorithms: ['sha256'] }),
     expect.any(Function),
+  );
+});
+
+it('copies multiple table rows and queries each selected file only once', async () => {
+  const other: FileResult = {
+    ...file,
+    path: 'C:/fixtures/second.txt',
+    name: 'second.txt',
+    hashes: { md5: 'e'.repeat(32) },
+  };
+  vi.mocked(native.run).mockResolvedValue({
+    ...done,
+    total: 2,
+    completed: 2,
+    results: [file, other],
+  });
+  vi.mocked(native.vtSettings).mockResolvedValue({ configured: true, proxy: null });
+  vi.mocked(native.lookupVt).mockImplementation(async (hash) => ({
+    hash,
+    status: 'found',
+    malicious: 0,
+    suspicious: 0,
+    total: 70,
+    lastAnalysisDate: null,
+    threatLabel: null,
+    threatCategories: [],
+  }));
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '添加文件' }));
+  await screen.findByText(other.hashes.md5!);
+  await user.click(screen.getByRole('checkbox', { name: '选择全部 3 行' }));
+  await user.click(screen.getByRole('button', { name: '复制哈希' }));
+  expect(vi.mocked(native.copy).mock.lastCall?.[0].split('\n')).toHaveLength(3);
+  await user.click(screen.getByRole('button', { name: '复制表格' }));
+  expect(vi.mocked(native.copy).mock.lastCall?.[0]).toContain(
+    '文件名\t文件格式\t算法\t哈希值\t文件路径',
+  );
+  expect(vi.mocked(native.copy).mock.lastCall?.[0]).toContain('second.txt\tUTF-8 文本\tMD5');
+  await user.click(screen.getByRole('button', { name: 'API 查询（2）' }));
+  await waitFor(() => expect(native.lookupVt).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(native.lookupVt).mock.calls.map(([hash]) => hash)).toEqual([
+    file.hashes.sha256,
+    other.hashes.md5,
+  ]);
+  expect(screen.getAllByText('0 / 70')).toHaveLength(3);
+});
+
+it('excludes files without supported VT digests from a multirow web action', async () => {
+  const other: FileResult = {
+    ...file,
+    path: 'C:/fixtures/only-blake3.txt',
+    name: 'only-blake3.txt',
+    hashes: { blake3: 'f'.repeat(64) },
+  };
+  vi.mocked(native.run).mockResolvedValue({
+    ...done,
+    total: 2,
+    completed: 2,
+    results: [file, other],
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '添加文件' }));
+  await screen.findByText(other.hashes.blake3!);
+  await user.click(screen.getByRole('checkbox', { name: '选择全部 3 行' }));
+  await user.click(screen.getByRole('button', { name: '免费网页检验' }));
+  expect(native.openVtPage).toHaveBeenCalledExactlyOnceWith('report', file.hashes.sha256);
+});
+
+it('copies verification lines with Command+C outside editable fields and preserves text-input copy', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '添加文件' }));
+  await screen.findByText(file.hashes.md5!);
+  screen.getByRole('button', { name: '重新计算' }).focus();
+  await user.keyboard('{Meta>}c{/Meta}');
+  expect(native.copy).toHaveBeenLastCalledWith(`abc.txt\tUTF-8 文本\t${file.hashes.md5}\t0\\0`);
+  const count = vi.mocked(native.copy).mock.calls.length;
+  await user.click(screen.getByRole('textbox', { name: '预期哈希' }));
+  await user.type(screen.getByRole('textbox', { name: '预期哈希' }), 'abc');
+  await user.keyboard('{Meta>}c{/Meta}');
+  expect(native.copy).toHaveBeenCalledTimes(count);
+});
+
+it('restores the saved proxy and tests it without querying hashes or submitting a key', async () => {
+  vi.mocked(native.vtSettings).mockResolvedValue({
+    configured: true,
+    proxy: 'socks5h://127.0.0.1:8890',
+  });
+  vi.mocked(native.testVtConnection).mockResolvedValue('已连接到 VT（HTTP 302，未校验 API Key）');
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '选项' }));
+  await waitFor(() =>
+    expect(screen.getByLabelText('VT 代理')).toHaveValue('socks5h://127.0.0.1:8890'),
+  );
+  await user.click(screen.getByRole('button', { name: '测试连接' }));
+  expect(await screen.findByText('已连接到 VT（HTTP 302，未校验 API Key）')).toBeInTheDocument();
+  expect(native.testVtConnection).toHaveBeenCalledTimes(1);
+  expect(native.lookupVt).not.toHaveBeenCalled();
+  expect(native.configureVt).not.toHaveBeenCalled();
+});
+
+it('saves an HTTP proxy and can return to direct mode without changing the key', async () => {
+  vi.mocked(native.vtSettings).mockResolvedValue({ configured: true, proxy: null });
+  vi.mocked(native.configureVtProxy)
+    .mockResolvedValueOnce({ configured: true, proxy: 'http://127.0.0.1:8080/' })
+    .mockResolvedValueOnce({ configured: true, proxy: null });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '选项' }));
+  await waitFor(() => expect(screen.getByLabelText('VT 代理')).toBeEnabled());
+  await user.type(screen.getByLabelText('VT 代理'), 'http://127.0.0.1:8080');
+  expect(screen.getByRole('button', { name: '测试连接' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: '保存代理' }));
+  expect(native.configureVtProxy).toHaveBeenLastCalledWith('http://127.0.0.1:8080');
+  await waitFor(() =>
+    expect(screen.getByLabelText('VT 代理')).toHaveValue('http://127.0.0.1:8080/'),
+  );
+  await user.click(screen.getByRole('button', { name: '直连' }));
+  expect(native.configureVtProxy).toHaveBeenLastCalledWith('');
+  expect(await screen.findByText('已切换为直连')).toBeInTheDocument();
+  expect(native.configureVt).not.toHaveBeenCalled();
+});
+
+it('shows a proxy save failure without claiming that the edited address was saved', async () => {
+  vi.mocked(native.vtSettings).mockResolvedValue({ configured: true, proxy: null });
+  vi.mocked(native.configureVtProxy).mockRejectedValue({
+    code: 'invalid-proxy',
+    message: '代理地址无效',
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '选项' }));
+  await waitFor(() => expect(screen.getByLabelText('VT 代理')).toBeEnabled());
+  await user.type(screen.getByLabelText('VT 代理'), 'bad://localhost');
+  await user.click(screen.getByRole('button', { name: '保存代理' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('代理地址无效');
+  expect(screen.queryByText('VT 代理已保存')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '测试连接' })).toBeDisabled();
+});
+
+it('uses filtered visual order for global Command+C and excludes hidden selected rows', async () => {
+  const rows = [10, 2, 1].map((value) => ({
+    ...file,
+    name: `sample${value}.bin`,
+    path: `/files/sample${value}.bin`,
+    fileFormat: value === 1 ? 'UTF-8 文本' : 'PE32 EXE',
+    hashes: { md5: value.toString(16).repeat(32) },
+  }));
+  vi.mocked(native.pickFiles).mockResolvedValue(rows.map((row) => row.path));
+  vi.mocked(native.run).mockImplementation(async (_request, receive) => {
+    receive({ type: 'discovered', files: rows, totalBytes: 9 });
+    for (const row of rows) receive({ type: 'file', result: row });
+    return { ...done, results: rows, total: 3, completed: 3 };
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '添加文件' }));
+  await screen.findByText('sample10.bin');
+  await user.click(screen.getByRole('button', { name: '全选' }));
+  await user.click(screen.getByRole('button', { name: '按文件名排序' }));
+  screen.getByRole('button', { name: '重新计算' }).focus();
+  await user.keyboard('{Meta>}c{/Meta}');
+  expect(native.copy).toHaveBeenLastCalledWith(
+    [rows[2], rows[1], rows[0]]
+      .map((row) => `${row.name}\t${row.fileFormat}\t${row.hashes.md5}\t0\\0`)
+      .join('\n'),
+  );
+  await user.click(screen.getByRole('button', { name: '筛选文件格式' }));
+  await user.type(screen.getByRole('searchbox', { name: '搜索文件格式的值' }), 'pe32');
+  await user.click(screen.getByRole('button', { name: '确定' }));
+  screen.getByRole('button', { name: '重新计算' }).focus();
+  await user.keyboard('{Meta>}c{/Meta}');
+  expect(native.copy).toHaveBeenLastCalledWith(
+    [rows[1], rows[0]]
+      .map((row) => `${row.name}\t${row.fileFormat}\t${row.hashes.md5}\t0\\0`)
+      .join('\n'),
   );
 });

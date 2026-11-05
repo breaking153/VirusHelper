@@ -25,7 +25,10 @@ async function fixture(t) {
       join(dir, bundle + '.sig'),
       Buffer.from(`signature-${name}`).toString('base64'),
     );
-    if (name.startsWith('macOS')) await writeFile(join(dir, 'app.dmg'), `dmg-${name}`);
+    if (name.startsWith('macOS')) {
+      await writeFile(join(dir, 'app.dmg'), `dmg-${name}`);
+      await writeFile(join(dir, 'app.pkg'), `pkg-${name}`);
+    }
   }
   return {
     artifactRoot: join(root, 'input'),
@@ -62,10 +65,10 @@ test('assembles all platform signatures and unique tagged download URLs', async 
         }[platform],
     );
   }
-  assert.match(
-    await readFile(join(options.output, 'SHA256SUMS.txt'), 'utf8'),
-    /VirusHelper_0.2.0_macOS-arm64.dmg/,
-  );
+  const sums = await readFile(join(options.output, 'SHA256SUMS.txt'), 'utf8');
+  assert.match(sums, /VirusHelper_0.2.0_macOS-arm64.dmg/);
+  assert.match(sums, /VirusHelper_0.2.0_macOS-arm64.pkg/);
+  assert.match(sums, /VirusHelper_0.2.0_macOS-x64.pkg/);
 });
 
 test('refuses an incomplete release instead of publishing a partial update manifest', async (t) => {
@@ -107,4 +110,11 @@ test('rejects an upgrade whose installer would register a missing versioned Shel
   verifyWindowsShellResource('0.2.2', {
     'windows/generated/virushelper_shell.dll': 'virushelper_shell-0.2.2.dll',
   });
+});
+
+test('refuses to publish a macOS release missing its native installer', async (t) => {
+  const options = await fixture(t);
+  await rm(join(options.artifactRoot, 'virushelper-release-macOS-arm64', 'app.pkg'));
+  await assert.rejects(prepareRelease(options), /expected one .pkg/);
+  await assert.rejects(readFile(join(options.output, 'latest.json')), { code: 'ENOENT' });
 });

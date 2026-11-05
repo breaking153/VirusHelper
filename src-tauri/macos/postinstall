@@ -1,0 +1,35 @@
+#!/bin/bash
+set -euo pipefail
+
+# Installer runs this hook as root. The payload already contains the application
+# and the system-wide Finder service, including when no desktop user is logged in.
+if [ "${3:-/}" != / ]; then
+  echo 'VirusHelper: installed to another volume; desktop registration will refresh at login.'
+  exit 0
+fi
+
+console_user="$(/usr/bin/stat -f '%Su' /dev/console)"
+case "$console_user" in
+  root|loginwindow|_mbsetupuser|'')
+    echo 'VirusHelper: no desktop session; Finder service is installed for the next login.'
+    exit 0
+    ;;
+esac
+console_uid="$(/usr/bin/id -u "$console_user")"
+workflow='/Library/Services/使用 VirusHelper 计算哈希.workflow'
+
+# asuser selects the GUI bootstrap namespace; sudo also drops root credentials
+# and sets the user's HOME. Never import into root's Shortcuts library.
+as_desktop_user() {
+  /bin/launchctl asuser "$console_uid" /usr/bin/sudo -H -u "$console_user" -- "$@"
+}
+if ! as_desktop_user /System/Library/CoreServices/pbs -update; then
+  echo 'VirusHelper: service cache refresh deferred; Finder will refresh at login.'
+fi
+if as_desktop_user /usr/bin/shortcuts list 2>/dev/null | /usr/bin/grep -Fx '使用 VirusHelper 计算哈希' >/dev/null; then
+  echo 'VirusHelper: the named shortcut already exists; keeping the user copy.'
+elif ! as_desktop_user /usr/bin/open -a Shortcuts "$workflow"; then
+  echo 'VirusHelper: Finder service installed; Shortcuts import could not be opened in this session.'
+fi
+# Opening Shortcuts requests conversion; the user must confirm the system dialog.
+exit 0

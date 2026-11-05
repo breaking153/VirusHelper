@@ -1,4 +1,4 @@
-use crate::{hash_file, resolve_entry, Algorithm, HashError};
+use crate::{hashing::hash_file_with_format, resolve_entry, Algorithm, HashError};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -50,11 +50,14 @@ pub struct HashCheck {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileResult {
     pub path: PathBuf,
     pub name: String,
     pub size: u64,
     pub status: FileStatus,
+    #[serde(default)]
+    pub file_format: Option<String>,
     pub hashes: BTreeMap<Algorithm, String>,
     pub checks: Vec<HashCheck>,
     pub error: Option<String>,
@@ -211,6 +214,7 @@ pub fn run_batch(
             name: file.name,
             size: file.size,
             status: FileStatus::Complete,
+            file_format: None,
             hashes: BTreeMap::new(),
             checks: vec![],
             error: None,
@@ -220,7 +224,7 @@ pub fn run_batch(
         } else if let Some(error) = file.error {
             Err(HashError::InvalidInput(error))
         } else {
-            hash_file(&file.path, &algorithms, cancel, |bytes| {
+            hash_file_with_format(&file.path, &algorithms, cancel, |bytes| {
                 if last_progress.elapsed() >= Duration::from_millis(80) || bytes >= file.size {
                     emit(JobEvent::Progress {
                         path: file.path.clone(),
@@ -236,7 +240,8 @@ pub fn run_batch(
         };
         match hashes {
             Ok(hashes) => {
-                result.hashes = hashes;
+                result.hashes = hashes.hashes;
+                result.file_format = Some(hashes.file_format);
                 if let Some(checks) = expected.get(&file.path) {
                     result.checks = checks
                         .iter()

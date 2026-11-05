@@ -9,7 +9,9 @@ trait KeyStore: Send + Sync {
 
 struct CredentialSession {
     store: Box<dyn KeyStore>,
+    proxy_store: Box<dyn KeyStore>,
     loaded: bool,
+    proxy_loaded: bool,
 }
 
 pub struct VtState {
@@ -19,23 +21,45 @@ pub struct VtState {
 
 impl VtState {
     pub fn new() -> Result<Self, VtError> {
-        Self::with_store(Box::new(SystemKeyStore {
-            account: "virustotal-api-key".into(),
-        }))
+        Self::with_stores(
+            Box::new(SystemKeyStore {
+                account: "virustotal-api-key".into(),
+            }),
+            Box::new(SystemKeyStore {
+                account: "virustotal-proxy".into(),
+            }),
+        )
     }
 
+    #[cfg(test)]
     fn with_store(store: Box<dyn KeyStore>) -> Result<Self, VtError> {
+        Self::with_stores(store, Box::<tests::MemoryStore>::default())
+    }
+
+    fn with_stores(
+        store: Box<dyn KeyStore>,
+        proxy_store: Box<dyn KeyStore>,
+    ) -> Result<Self, VtError> {
         Ok(Self {
             client: VtClient::new()?,
             credentials: Mutex::new(CredentialSession {
                 store,
+                proxy_store,
                 loaded: false,
+                proxy_loaded: false,
             }),
         })
     }
 
     pub fn settings(&self) -> Result<VtSettings, VtError> {
         let mut credentials = self.credentials.lock().map_err(|_| state_error())?;
+        if !credentials.proxy_loaded {
+            let proxy = credentials.proxy_store.load().map_err(proxy_store_error)?;
+            let transport =
+                VtClient::prepare_proxy(proxy.as_deref().map(String::as_str).unwrap_or_default())?;
+            self.client.set_proxy(transport)?;
+            credentials.proxy_loaded = true;
+        }
         if !credentials.loaded {
             let saved = credentials.store.load()?;
             self.client
@@ -43,6 +67,32 @@ impl VtState {
             credentials.loaded = true;
         }
         self.client.settings()
+    }
+
+    pub fn set_proxy(&self, value: &str) -> Result<VtSettings, VtError> {
+        let transport = VtClient::prepare_proxy(value)?;
+        let value = value.trim();
+        let mut credentials = self.credentials.lock().map_err(|_| state_error())?;
+        credentials.proxy_loaded = false;
+        credentials
+            .proxy_store
+            .save(if value.is_empty() { None } else { Some(value) })
+            .map_err(proxy_store_error)?;
+        if value.is_empty()
+            && credentials
+                .proxy_store
+                .load()
+                .map_err(proxy_store_error)?
+                .is_some()
+        {
+            return Err(proxy_store_error(VtError::new(
+                "credential-store",
+                "删除未确认",
+            )));
+        }
+        let settings = self.client.set_proxy(transport)?;
+        credentials.proxy_loaded = true;
+        Ok(settings)
     }
 
     pub fn set_api_key(&self, key: Zeroizing<String>) -> Result<VtSettings, VtError> {
@@ -68,6 +118,13 @@ impl VtState {
         credentials.loaded = true;
         Ok(settings)
     }
+}
+
+fn proxy_store_error(_: VtError) -> VtError {
+    VtError::new(
+        "proxy-store",
+        "无法读取或保存 VT 代理设置，请检查系统凭据存储权限后重试",
+    )
 }
 
 fn state_error() -> VtError {
@@ -148,7 +205,7 @@ pub(crate) mod tests {
         ignore_delete: bool,
     }
     #[derive(Clone, Default)]
-    struct MemoryStore(Arc<Mutex<Data>>);
+    pub(super) struct MemoryStore(Arc<Mutex<Data>>);
 
     impl KeyStore for MemoryStore {
         fn load(&self) -> Result<Option<Zeroizing<String>>, VtError> {
@@ -176,6 +233,50 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn proxy_is_restored_and_cleared_independently_of_the_api_key() {
+        let keys = MemoryStore::default();
+        let proxies = MemoryStore::default();
+        let state =
+            VtState::with_stores(Box::new(keys.clone()), Box::new(proxies.clone())).unwrap();
+        state.set_api_key(Zeroizing::new("a".repeat(64))).unwrap();
+        let saved = state.set_proxy("socks5h://127.0.0.1:8890").unwrap();
+        assert!(saved.configured);
+        assert_eq!(saved.proxy.as_deref(), Some("socks5h://127.0.0.1:8890"));
+        drop(state);
+        let state =
+            VtState::with_stores(Box::new(keys.clone()), Box::new(proxies.clone())).unwrap();
+        let restored = state.settings().unwrap();
+        assert!(restored.configured);
+        assert_eq!(restored.proxy, saved.proxy);
+        let cleared = state.set_proxy("").unwrap();
+        assert!(cleared.configured);
+        assert!(cleared.proxy.is_none());
+        assert!(proxies.0.lock().unwrap().key.is_none());
+        assert!(keys.0.lock().unwrap().key.is_some());
+    }
+
+    #[test]
+    fn invalid_proxy_or_failed_save_keeps_the_previous_proxy_and_key() {
+        let keys = MemoryStore::default();
+        let proxies = MemoryStore::default();
+        let state = VtState::with_stores(Box::new(keys), Box::new(proxies.clone())).unwrap();
+        state.set_api_key(Zeroizing::new("a".repeat(64))).unwrap();
+        state.set_proxy("socks5h://127.0.0.1:8890").unwrap();
+        assert_eq!(
+            state.set_proxy("ftp://bad:123").unwrap_err().code,
+            "invalid-proxy"
+        );
+        proxies.0.lock().unwrap().fail_write = true;
+        assert_eq!(
+            state.set_proxy("http://localhost:8080").unwrap_err().code,
+            "proxy-store"
+        );
+        let settings = state.settings().unwrap();
+        assert!(settings.configured);
+        assert_eq!(settings.proxy.as_deref(), Some("socks5h://127.0.0.1:8890"));
+    }
+
+    #[test]
     fn saved_key_is_restored_in_a_new_app_session_without_returning_the_secret() {
         let store = MemoryStore::default();
         let key = "a".repeat(64);
@@ -193,7 +294,7 @@ pub(crate) mod tests {
         assert!(settings.configured);
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            serde_json::json!({"configured": true})
+            serde_json::json!({"configured": true, "proxy": null})
         );
         assert!(restarted.client.settings().unwrap().configured);
     }

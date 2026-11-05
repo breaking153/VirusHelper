@@ -57,6 +57,7 @@ export function jobReducer(state: JobState, action: JobAction): JobState {
           rows = event.files.map((file) => ({
             ...file,
             status: 'pending',
+            fileFormat: null,
             hashes: {},
             checks: [],
           }));

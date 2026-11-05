@@ -44,3 +44,39 @@ fn missing_analysis_is_pending_and_malformed_responses_are_rejected() {
         );
     }
 }
+
+#[test]
+fn decodes_vt_threat_labels_and_categories_and_tolerates_absent_classification() {
+    for (classification, label, categories) in [
+        (
+            serde_json::json!({"suggested_threat_label": "trojan.generic/test", "popular_threat_category": [{"count": 20, "value": "trojan"}, {"count": 3, "value": "downloader"}, {"count": 2, "value": "trojan"}]}),
+            Some("trojan.generic/test"),
+            vec!["trojan", "downloader"],
+        ),
+        (
+            serde_json::json!({"suggested_threat_label": " ", "popular_threat_category": [{"value": "ransomware"}]}),
+            None,
+            vec!["ransomware"],
+        ),
+        (serde_json::Value::Null, None, vec![]),
+        (serde_json::json!({}), None, vec![]),
+    ] {
+        let body = serde_json::json!({"data": {"id": HASH, "type": "file", "attributes": {
+            "last_analysis_stats": {"malicious": 3, "undetected": 67},
+            "popular_threat_classification": classification
+        }}});
+        let report = decode_report(HASH, &serde_json::to_vec(&body).unwrap()).unwrap();
+        assert_eq!(report.threat_label.as_deref(), label);
+        assert_eq!(report.threat_categories, categories);
+        let serialized = serde_json::to_value(&report).unwrap();
+        assert_eq!(
+            serialized["threatLabel"],
+            serde_json::to_value(label).unwrap()
+        );
+        assert_eq!(
+            serialized["threatCategories"],
+            serde_json::to_value(categories).unwrap()
+        );
+        assert_eq!(report.status, "found");
+    }
+}

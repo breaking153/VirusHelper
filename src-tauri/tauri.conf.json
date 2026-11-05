@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "VirusHelper",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "identifier": "io.virushelper.desktop",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "node node_modules/vite/bin/vite.js --host 127.0.0.1",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm run build && node scripts/build-windows-shell.mjs",
+    "beforeBuildCommand": "cargo xtask frontend && cargo xtask prepare-windows-shell",
     "frontendDist": "../dist"
   },
   "app": {
@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "VirusHelper · 文件哈希与校验",
-        "width": 760,
-        "height": 500,
-        "minWidth": 640,
-        "minHeight": 440,
+        "width": 1200,
+        "height": 640,
+        "minWidth": 760,
+        "minHeight": 520,
         "center": true,
         "dragDropEnabled": true
       }

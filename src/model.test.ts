@@ -7,6 +7,7 @@ export const result: FileResult = {
   name: 'abc.txt',
   size: 3,
   status: 'complete',
+  fileFormat: 'UTF-8 文本',
   hashes: {
     md5: '900150983cd24fb0d6963f7d28e17f72',
     sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',

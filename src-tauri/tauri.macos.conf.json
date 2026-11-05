@@ -1,3 +1,7 @@
 {
-  "bundle": { "targets": ["app", "dmg"], "macOS": { "minimumSystemVersion": "12.0" } }
+  "build": { "beforeBuildCommand": "cargo xtask frontend" },
+  "bundle": {
+    "targets": ["app"],
+    "macOS": { "minimumSystemVersion": "12.0" }
+  }
 }

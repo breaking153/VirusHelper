@@ -1,13 +1,17 @@
-VirusHelper 0.2.1 修复 Windows Shell 集成。
+VirusHelper 0.3.0
 
-- 参考 OpenHashTab，新增原生 Rust COM 扩展，通过 AllFilesystemObjects 注册经典右键菜单和文件属性页。
-- 右键支持多个文件/文件夹一次传入程序；属性页默认自动计算 MD5，切换算法自动重算。
-- 属性页使用后台流式计算，支持目录递归，可打开完整程序使用 VT、校验和导出。
-- 安装/更新注册版本化 DLL，卸载清理自己的注册，替换旧的静态右键项。
-- 保留 Windows x64、macOS Apple Silicon、macOS Intel 的 GitHub Release 签名自动更新。
+- 表格支持类似 WPS 的列标题下拉筛选：搜索、勾选值、多列联动、升降序排序；多选、分页和复制遵循筛选后的显示顺序。
+- 文件格式根据文件内容识别，并显示在文件名后的第二列；支持 PE32/PE32+ EXE、DLL 及常见图片、文档、压缩包等格式。
+- VT 查询支持 1、2、4、8、16 路并发，默认 4 路；额度仅根据 VT 接口响应判断。新增 HTTP(S)、SOCKS5 代理配置和无 Key 的连接测试。
+- 显示 VT 返回的威胁标签与分类，支持筛选和复制。双击复制对应单元格，Command/Ctrl+C 复制四列校验行，复制成功显示渐隐提示。
+- macOS 提供 DMG 内嵌原生 PKG 安装向导，也可直接下载 PKG；安装时注册 Finder 快速操作，并在桌面会话中引导导入快捷指令。
+- Windows 提供 x64 NSIS 安装向导，安装或升级时自动注册经典右键菜单和“VirusHelper 哈希”属性页，卸载时清理对应注册项，无需另行运行注册脚本。
 
-Windows 11 新版第一层菜单未实现；与 OpenHashTab 相同，使用“显示更多选项”以及文件“属性”入口。
+下载说明：
 
-Windows 下载 Windows-x64-setup.exe；Apple Silicon Mac 下载 macOS-arm64.dmg；Intel Mac 下载 macOS-x64.dmg。
+- Windows：选择 `Windows-x64-setup.exe`。Windows 11 的右键入口位于“显示更多选项”；文件属性页也提供哈希功能。
+- Apple Silicon Mac：选择 `macOS-arm64.dmg` 或 `macOS-arm64.pkg`。
+- Intel Mac：选择 `macOS-x64.dmg` 或 `macOS-x64.pkg`。
+- `.app.tar.gz`、`.sig` 和 `latest.json` 用于应用自动更新；`SHA256SUMS.txt` 提供下载文件校验值。
 
-当前未配置 Windows Authenticode 证书或 Apple Developer 签名/公证。更新包具有独立的 Tauri 更新签名。
+安装包未配置 Windows Authenticode 或 Apple Developer 公证，操作系统可能显示来源确认提示。自动更新包使用独立的 Tauri 更新签名。

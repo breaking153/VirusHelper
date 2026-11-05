@@ -43,6 +43,7 @@ export interface HashCheck {
 }
 export interface FileResult extends DiscoveredFile {
   status: 'complete' | 'error' | 'cancelled';
+  fileFormat: string | null;
   hashes: Partial<Record<Algorithm, string>>;
   checks: HashCheck[];
 }
@@ -73,6 +74,7 @@ export interface JobSummary {
 }
 export interface VtSettings {
   configured: boolean;
+  proxy: string | null;
 }
 export interface VtReport {
   hash: string;
@@ -81,4 +83,6 @@ export interface VtReport {
   suspicious: number;
   total: number;
   lastAnalysisDate: number | null;
+  threatLabel: string | null;
+  threatCategories: string[];
 }

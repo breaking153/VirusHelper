@@ -29,6 +29,8 @@ export const native = {
   copy: (text: string) => writeText(text),
   vtSettings: () => invoke<VtSettings>('get_vt_settings'),
   configureVt: (key: string) => invoke<VtSettings>('set_vt_api_key', { key }),
+  configureVtProxy: (proxy: string) => invoke<VtSettings>('set_vt_proxy', { proxy }),
+  testVtConnection: () => invoke<string>('test_vt_connection'),
   lookupVt: (hash: string) => invoke<VtReport>('lookup_vt', { hash }),
   openVtPage: (page: 'report' | 'api-key' | 'docs', hash: string | null = null) =>
     invoke<void>('open_vt_page', { page, hash }),

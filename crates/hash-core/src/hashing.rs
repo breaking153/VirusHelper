@@ -1,3 +1,4 @@
+use crate::file_format::{detect_format, FORMAT_SAMPLE_SIZE};
 use crate::{Algorithm, HashError};
 use digest::{Digest, DynDigest};
 use std::{
@@ -57,11 +58,25 @@ impl HashState {
 }
 
 pub fn hash_reader(
+    reader: impl Read,
+    algorithms: &[Algorithm],
+    cancel: &AtomicBool,
+    progress: impl FnMut(u64),
+) -> Result<BTreeMap<Algorithm, String>, HashError> {
+    hash_reader_with_format(reader, algorithms, cancel, progress).map(|result| result.hashes)
+}
+
+pub(crate) struct HashedFile {
+    pub hashes: BTreeMap<Algorithm, String>,
+    pub file_format: String,
+}
+
+fn hash_reader_with_format(
     mut reader: impl Read,
     algorithms: &[Algorithm],
     cancel: &AtomicBool,
     mut progress: impl FnMut(u64),
-) -> Result<BTreeMap<Algorithm, String>, HashError> {
+) -> Result<HashedFile, HashError> {
     if algorithms.is_empty() {
         return Err(HashError::InvalidInput("请至少选择一种哈希算法".into()));
     }
@@ -70,6 +85,7 @@ pub fn hash_reader(
         .map(|a| (*a, HashState::new(*a)))
         .collect();
     let mut buffer = vec![0; BUFFER_SIZE];
+    let mut sample = Vec::with_capacity(FORMAT_SAMPLE_SIZE);
     let mut processed = 0;
     loop {
         if cancel.load(Ordering::Relaxed) {
@@ -82,6 +98,8 @@ pub fn hash_reader(
         if length == 0 {
             break;
         }
+        let take = length.min(FORMAT_SAMPLE_SIZE - sample.len());
+        sample.extend_from_slice(&buffer[..take]);
         for state in states.values_mut() {
             state.update(&buffer[..length]);
         }
@@ -91,25 +109,37 @@ pub fn hash_reader(
     if processed == 0 {
         progress(0);
     }
-    Ok(states
-        .into_iter()
-        .map(|(algorithm, state)| (algorithm, state.finish()))
-        .collect())
+    Ok(HashedFile {
+        hashes: states
+            .into_iter()
+            .map(|(algorithm, state)| (algorithm, state.finish()))
+            .collect(),
+        file_format: detect_format(&sample, processed > sample.len() as u64),
+    })
 }
 
 pub fn hash_file(
     path: &Path,
     algorithms: &[Algorithm],
     cancel: &AtomicBool,
-    mut progress: impl FnMut(u64),
+    progress: impl FnMut(u64),
 ) -> Result<BTreeMap<Algorithm, String>, HashError> {
+    hash_file_with_format(path, algorithms, cancel, progress).map(|result| result.hashes)
+}
+
+pub(crate) fn hash_file_with_format(
+    path: &Path,
+    algorithms: &[Algorithm],
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(u64),
+) -> Result<HashedFile, HashError> {
     let mut file = File::open(path)?;
     let before = file.metadata()?;
     if !before.is_file() {
         return Err(HashError::InvalidInput("只能计算常规文件".into()));
     }
     let mut read = 0;
-    let hashes = hash_reader(&mut file, algorithms, cancel, |bytes| {
+    let hashes = hash_reader_with_format(&mut file, algorithms, cancel, |bytes| {
         read = bytes;
         progress(bytes);
     })?;
@@ -124,4 +154,36 @@ pub fn hash_file(
         return Err(HashError::Changed);
     }
     Ok(hashes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn detects_signatures_across_short_reads_in_the_existing_hash_stream() {
+        struct ShortReads(std::io::Cursor<Vec<u8>>);
+        impl Read for ShortReads {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                let n = buffer.len().min(2);
+                self.0.read(&mut buffer[..n])
+            }
+        }
+        let bytes = b"\x89PNG\r\n\x1a\n";
+        let result = hash_reader_with_format(
+            ShortReads(std::io::Cursor::new(bytes.to_vec())),
+            &[Algorithm::Md5],
+            &AtomicBool::new(false),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(result.file_format, "PNG");
+        let normal = hash_reader(
+            std::io::Cursor::new(bytes),
+            &[Algorithm::Md5],
+            &AtomicBool::new(false),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(result.hashes, normal);
+    }
 }

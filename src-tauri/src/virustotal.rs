@@ -31,6 +31,26 @@ pub async fn set_vt_api_key(
 }
 
 #[tauri::command]
+pub async fn set_vt_proxy(
+    state: State<'_, Arc<VtState>>,
+    proxy: String,
+) -> Result<VtSettings, VtError> {
+    let state = state.inner().clone();
+    credential_task(move || {
+        state.settings()?;
+        state.set_proxy(&proxy)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn test_vt_connection(state: State<'_, Arc<VtState>>) -> Result<String, VtError> {
+    let load_state = state.inner().clone();
+    credential_task(move || load_state.settings()).await?;
+    state.client.test_connection().await
+}
+
+#[tauri::command]
 pub async fn lookup_vt(state: State<'_, Arc<VtState>>, hash: String) -> Result<VtReport, VtError> {
     validate_hash(&hash)?;
     let load_state = state.inner().clone();
@@ -84,7 +104,7 @@ mod tests {
             tauri::async_runtime::block_on(set_vt_api_key(app.state(), key.clone())).unwrap();
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            serde_json::json!({"configured": true})
+            serde_json::json!({"configured": true, "proxy": null})
         );
         assert!(
             tauri::async_runtime::block_on(get_vt_settings(app.state()))

@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HashTable } from './components/HashTable';
+import { CopyToast } from './components/CopyToast';
 import { VirusTotal } from './components/VirusTotal';
 import { Updates } from './components/Updates';
 import { baseName, compareHash, jobProgress } from './model';
 import { native } from './native';
 import { ALGORITHMS, type Algorithm, type ChecksumTarget, type FileRow } from './types';
 import { useHashJob } from './useHashJob';
+import { hashEntries, copyEntries, vtTargets } from './tableModel';
+import { useVirusTotal } from './useVirusTotal';
+import { useTableView } from './tableView';
 
 function initialTheme(): 'light' | 'dark' {
   try {
@@ -31,16 +35,17 @@ export default function App() {
   const [manifest, setManifest] = useState<string | null>(null);
   const [hint, setHint] = useState<Algorithm | ''>('');
   const [exportAlgorithm, setExportAlgorithm] = useState<Algorithm>('md5');
-  const [selection, setSelection] = useState<{ path: string; algorithm: Algorithm | null } | null>(
-    null,
-  );
+  const [selection, setSelection] = useState<string[] | null>(null);
   const [expected, setExpected] = useState('');
   const [working, setWorking] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  const [copyToast, setCopyToast] = useState(0);
   const job = useHashJob();
+  const openOptions = useCallback(() => setOptions(true), []);
+  const vt = useVirusTotal(openOptions);
   const locked = job.busy || working || updating;
   const disabled = locked || !native.available;
   const resetJob = job.reset;
@@ -154,6 +159,7 @@ export default function App() {
     });
   const clear = () =>
     void perform(async () => {
+      vt.cancel();
       await native.clear();
       setPaths([]);
       setChecksums([]);
@@ -180,8 +186,9 @@ export default function App() {
   const copy = async (text: string) => {
     try {
       await native.copy(text);
-      setNotice({ text: '已复制到剪贴板' });
+      setCopyToast((sequence) => sequence + 1);
     } catch (error) {
+      setCopyToast(0);
       setNotice({ text: `复制失败：${errorMessage(error)}`, error: true });
     }
   };
@@ -191,23 +198,26 @@ export default function App() {
     name: baseName(path),
     size: 0,
     status: 'pending',
+    fileFormat: null,
     hashes: {},
     checks: [],
     error: null,
   }));
   const rows =
     job.phase === 'idle' || (job.phase === 'error' && !job.rows.length) ? queued : job.rows;
-  const selectedRow = rows.find((row) => row.path === selection?.path) ?? rows[0];
-  const selectedAlgorithm =
-    selection &&
-    selectedRow &&
-    selection.path === selectedRow.path &&
-    selection.algorithm &&
-    selectedRow.hashes[selection.algorithm]
-      ? selection.algorithm
-      : ALGORITHMS.find((a) => selectedRow?.hashes[a.id])?.id;
-  const selectedHash = selectedAlgorithm ? selectedRow?.hashes[selectedAlgorithm] : undefined;
-  const vtHash = selectedRow?.hashes.sha256 ?? selectedRow?.hashes.sha1 ?? selectedRow?.hashes.md5;
+  const entries = useMemo(() => hashEntries(rows), [rows]);
+  const table = useTableView(entries, vt.results, job.busy, job.progress?.path);
+  const visibleEntries = table.entries;
+  const entryIds = useMemo(() => new Set(visibleEntries.map((e) => e.id)), [visibleEntries]);
+  const selectedIds =
+    selection === null
+      ? visibleEntries.slice(0, 1).map((e) => e.id)
+      : selection.filter((id) => entryIds.has(id));
+  const selectedSet = new Set(selectedIds);
+  const selectedEntries = visibleEntries.filter((entry) => selectedSet.has(entry.id));
+  const selectedPaths = new Set(selectedEntries.map((e) => e.file.path));
+  const selectedRow = selectedEntries[0]?.file;
+  const selectedTargets = vtTargets(selectedEntries);
   const comparison = compareHash(expected, selectedRow?.hashes ?? {});
   const comparisonText = {
     empty: '',
@@ -235,7 +245,37 @@ export default function App() {
                 : '等待添加文件';
 
   return (
-    <main className={`utility ${dragging ? 'dragging' : ''}`}>
+    <main
+      className={`utility ${dragging ? 'dragging' : ''}`}
+      onKeyDown={(event) => {
+        if (
+          event.defaultPrevented ||
+          !(event.metaKey || event.ctrlKey) ||
+          event.key.toLowerCase() !== 'c' ||
+          !native.available
+        )
+          return;
+        if (
+          event.target instanceof Element &&
+          event.target.closest(
+            'input:not([type="checkbox"]), textarea, select, [contenteditable]:not([contenteditable="false"])',
+          )
+        )
+          return;
+        const text = copyEntries(
+          selectedEntries,
+          event.shiftKey ? 'table' : 'checksums',
+          vt.results,
+        );
+        if (text) {
+          event.preventDefault();
+          void copy(text);
+        }
+      }}
+    >
+      <div className="copy-toast-region" role="status" aria-live="polite" aria-atomic="true">
+        {copyToast > 0 && <CopyToast key={copyToast} />}
+      </div>
       <div className="toolbar" aria-label="文件操作">
         <button onClick={pickFiles} disabled={disabled}>
           添加文件
@@ -292,20 +332,33 @@ export default function App() {
         </div>
       )}
       <HashTable
-        rows={rows}
-        selectedPath={selectedRow?.path}
-        selectedAlgorithm={selectedAlgorithm}
-        select={(path, algorithm) => setSelection({ path, algorithm })}
+        entries={visibleEntries}
+        totalCount={entries.length}
+        view={table}
+        selectedIds={selectedIds}
+        select={setSelection}
         copy={(text) => void copy(text)}
+        vt={(action, selected) => {
+          const targets = vtTargets(selected);
+          if (action === 'web') void vt.openReports(targets);
+          else void vt.query(targets);
+        }}
+        vtResults={vt.results}
+        apiBusy={vt.querying || vt.loading || vt.saving || vt.testing}
+        available={native.available}
         busy={job.busy}
         activePath={job.progress?.path}
       />
       <div className="selection-line" title={selectedRow?.path}>
-        {selectedRow ? selectedRow.path : '拖放文件或文件夹到此窗口，或点击“添加文件”'}
-        <span>双击哈希复制</span>
+        {selectedEntries.length > 1
+          ? `已选 ${selectedEntries.length} 行 · ${new Set(selectedEntries.map((e) => e.file.path)).size} 个文件`
+          : (selectedRow?.path ?? '拖放文件或文件夹到此窗口，或点击“添加文件”')}
+        <span>双击复制单元格 · Cmd/Ctrl+C 复制校验行</span>
       </div>
       <div className="compare-line">
-        <label htmlFor="expected-hash">哈希比对</label>
+        <label htmlFor="expected-hash">
+          {selectedPaths.size > 1 ? '首个文件比对' : '哈希比对'}
+        </label>
         <input
           id="expected-hash"
           value={expected}
@@ -315,18 +368,20 @@ export default function App() {
           spellCheck={false}
         />
         <button
-          disabled={!selectedHash || !native.available}
-          onClick={() => selectedHash && void copy(selectedHash)}
+          disabled={!selectedEntries.some((e) => e.hash) || !native.available}
+          onClick={() => void copy(copyEntries(selectedEntries, 'hashes'))}
         >
           复制哈希
         </button>
         <button
-          disabled={!selectedHash || !native.available}
+          disabled={!selectedEntries.some((e) => e.hash) || !native.available}
           onClick={() =>
             void copy(
-              ALGORITHMS.filter((a) => selectedRow?.hashes[a.id])
-                .map((a) => `${a.label}: ${selectedRow!.hashes[a.id]}`)
-                .join('\n'),
+              copyEntries(
+                visibleEntries.filter((e) => selectedPaths.has(e.file.path)),
+                'table',
+                vt.results,
+              ),
             )
           }
         >
@@ -341,7 +396,7 @@ export default function App() {
           {comparisonText}
         </p>
       )}
-      <VirusTotal hash={vtHash} options={options} openOptions={() => setOptions(true)} />
+      <VirusTotal targets={selectedTargets} state={vt} options={options} />
       {options && (
         <section id="options" className="options" aria-label="计算选项">
           <fieldset disabled={working || updating} className="algorithms">

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>VirusHelper {{VERSION}}</title>
+  <welcome file="Welcome.html"/>
+  <conclusion file="Conclusion.html"/>
+  <options customize="never" hostArchitectures="{{ARCH}}"/>
+  <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+  <volume-check><allowed-os-versions><os-version min="{{MINIMUM_OS}}"/></allowed-os-versions></volume-check>
+  <choices-outline><line choice="default"/></choices-outline>
+  <choice id="default" visible="false" title="VirusHelper">
+    <pkg-ref id="io.virushelper.desktop.installer"/>
+  </choice>
+  <pkg-ref id="io.virushelper.desktop.installer" version="{{VERSION}}" auth="Root">VirusHelper-component.pkg</pkg-ref>
+</installer-gui-script>
